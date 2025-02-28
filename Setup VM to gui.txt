@@ -44,7 +44,7 @@ UBUNTU v22.04 jammy lts x86/64
 
   now we have to run nomachine in VM
 
-8) dpkg -i <name of the nomachine file you downloaded above>
+8) sudo dpkg -i <name of the nomachine file you downloaded above>
 
 9) reboot
 
