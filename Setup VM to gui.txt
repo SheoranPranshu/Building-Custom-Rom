@@ -5,7 +5,7 @@
 500 GB storage 
 32GB Ram 
 V8 Cpu cores
-UBUNTU v22.04 jammy lts x86/64
+I used UBUNTU v22.04 jammy lts x86/64
 
 # Setup For gui (graphical user interface)
 
