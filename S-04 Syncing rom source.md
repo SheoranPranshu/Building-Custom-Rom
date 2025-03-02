@@ -6,7 +6,7 @@ cd EvolutionX
 ```
 repo init -u https://github.com/Evolution-X/manifest -b vic --git-lfs
 ```
-U can use --depth 1 at end of repo to save data and space like instead of using above command use this one
+U can use --depth 1 at end of repo to save data and space like this instead of using above command use this one
 ```
 repo init -u https://github.com/Evolution-X/manifest -b vic --git-lfs --depth 1
 ```
