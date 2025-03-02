@@ -40,9 +40,9 @@ You’ll need to set up some directories in your build environment
 To create them:
 ```bash
 mkdir -p ~/bin
-mkdir -p ~/(romname)
+mkdir -p ~/EvolutionX
 ```
-The ~/bin directory will contain the git-repo tool (commonly named “repo”) and the ~/android directory will contain the source code of the Custom ROM
+The ~/bin directory will contain the git-repo tool (commonly named “repo”) and the ~/EvolutionX directory will contain the source code of the Custom ROM like here EvolutionX rom
 
 
 ## 4. Install the repo command
