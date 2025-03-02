@@ -1,6 +1,6 @@
-#So server you could try is gcp (Google'scloud console)
+So server you could try is gcp (Google'scloud console)
 
-#  Specs
+# Specs
 
 500 GB storage 
 32GB Ram 
@@ -32,7 +32,7 @@ I used UBUNTU v22.04 jammy lts x86/64
 
  now we have to search for PasswordAuthentication if it is yes you are good to go but if it's not you have to modify it to yes
 
-# if it is no then let me show how to change it
+~ if it is no then let me show how to change it
   nano /etc/ssh/sshd_config
 
  now remove # before PasswordAuthentication and then change no to yes
