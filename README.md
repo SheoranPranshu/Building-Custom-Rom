@@ -1,7 +1,3 @@
-# All steps given in files above ;)
+All steps given in files above files
 
-
-
-
-
- #         Will Update Further If got time :)
+Will Update Further If got time :)
