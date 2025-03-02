@@ -1,6 +1,7 @@
 # Open folder you made for your rom like here EvolutionX
+```
 cd EvolutionX
-
+```
 # Initialize local repository
 ```
 repo init -u https://github.com/Evolution-X/manifest -b vic --git-lfs
