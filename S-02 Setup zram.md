@@ -10,12 +10,14 @@ sudo nano /etc/default/zramswap
 change the things as below/per requirement 
 
 PERCENT=75
+
 ALGO=lz4
+
 PRIORITY=100
 
 change the things in that file like above and remove '#' before PERCENT/ALGO/PRIORITY
 
-Percent is how much zram you want like here 75 percent of my zram like 24 gb for 32gb physical ram
+Percent is how much zram you want like here 75 percent of my ram i.e, like 24 gb for 32gb physical ram
 
 # 4) Start Zram
 sudo systemctl restart zramswap
