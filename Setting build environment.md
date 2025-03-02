@@ -57,7 +57,7 @@ Given that repo requires you to identify yourself to sync Android, run the follo
 git config --global user.email "you@example.com"
 git config --global user.name "Your Name"
 ```
-Credits -
+# Credits -
 
 - .[Shantanu Sarkar](https://github.com/shantanu-sarkar)
 - [Akhil Narang](https://github.com/akhilnarang)
