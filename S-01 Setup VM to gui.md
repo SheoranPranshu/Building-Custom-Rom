@@ -8,46 +8,51 @@ V8 Cpu cores
 I used UBUNTU v22.04 jammy lts x86/64
 
 # Setup For gui (graphical user interface)
+```
+sudo apt update && sudo apt upgrade
+```
+```
+sudo apt install ubuntu-gnome-desktop
+```
+```
+sudo adduser <username>
+```
 
-1) sudo apt update && sudo apt upgrade
-
-2) sudo apt install ubuntu-gnome-desktop
-
-3) sudo adduser <username>
-
-    then give it password (don't leave empty)
+   then give it password (don't leave empty)
     then enter enter until user is build 
 
    now give it superuser rights
-
-4) sudo usermod -aG sudo,adm <username>
-
-   now get into root directory of super user
-
-5) sudo -i
-
+```
+sudo usermod -aG sudo,adm <username>
+```
+  now get into root directory of super user
+```
+sudo -i
+```
   now we have to check whether the user is with password or not
-
-6) cat /etc/ssh/sshd_config
-
+```
+cat /etc/ssh/sshd_config
+```
  now we have to search for PasswordAuthentication if it is yes you are good to go but if it's not you have to modify it to yes
 
 ~ if it is no then let me show how to change it
-  nano /etc/ssh/sshd_config
-
+```
+nano /etc/ssh/sshd_config
+```
  now remove # before PasswordAuthentication and then change no to yes
  and then click ctrl+x then Y after that you are good to go 
 
   now we have to download nomachine to control VM via any device with gui
-
-7) wget <download link for nomachine deb file for x86/64>
-
+```
+wget <download link for nomachine deb file for x86/64>
+```
   now we have to run nomachine in VM
-
-8) sudo dpkg -i <name of the nomachine file you downloaded above>
-
-9) reboot
-
+```
+sudo dpkg -i <name of the nomachine file you downloaded above>
+```
+```
+reboot
+```
 # now stop the VM via website 
 
  # now we have to add some firewall rules
