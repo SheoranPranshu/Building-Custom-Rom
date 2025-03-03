@@ -34,7 +34,7 @@ swapon --show
 
 # 6) If fails or dont show zram then do like this
 
-# 7) Install kernel modules (Ubuntu 22.04)
+# 7) Install kernel modules
 ```
 sudo apt install linux-modules-extra-$(uname -r)
 ```
