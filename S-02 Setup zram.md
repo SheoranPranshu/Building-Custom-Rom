@@ -29,7 +29,7 @@ if done then zram is started successfully no need to go further
 
 # 5) Check Zram
 ```
-free-h
+swapon --show
 ```
 
 # 6) If fails or dont show zram then do like this
@@ -58,7 +58,7 @@ sudo systemctl restart zramswap
 
 # 9) check zram
 ```
-free-h
+swapon --show
 ```
 
 
