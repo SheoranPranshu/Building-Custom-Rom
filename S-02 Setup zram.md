@@ -33,6 +33,12 @@ free-h
 ```
 
 # 6) If fails or dont show zram then do like this
+
+# 7) Install kernel modules (Ubuntu 22.04)
+```
+sudo apt install linux-modules-extra-$(uname -r)
+```
+# 8) Load Zram Manually
 ```
 lsmod | grep zram
 ```       
@@ -44,11 +50,8 @@ sudo modprobe zram
 
 after above steps
 
-# 7) Install kernel modules (Ubuntu 22.04)
-```
-sudo apt install linux-modules-extra-$(uname -r)
-```
-# 8) now start again
+
+# 9) now start again
 ```
 sudo systemctl restart zramswap
 ```
@@ -58,6 +61,6 @@ sudo systemctl restart zramswap
 free-h
 ```
 
-# if still fails then do step 7 then 6 then 8 it will work now 
-if not search on google I only found these solutions
+
+if still fails then search on google I only found these solutions
 
