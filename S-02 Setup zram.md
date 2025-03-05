@@ -23,7 +23,7 @@ you can lz4 aslo for ALGO instead of zstd
 
 Percent is how much zram you want like here 75 percent of my ram i.e, like 24 gb for 32gb physical ram
 
-# 4) Start Zram
+# 4) Start Zram (if fails do further steps)
 ```
 sudo systemctl restart zramswap
 ```
