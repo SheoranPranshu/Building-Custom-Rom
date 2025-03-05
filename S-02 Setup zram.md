@@ -13,11 +13,13 @@ change the things as below/per requirement
 
 PERCENT=75
 
-ALGO=lz4
+ALGO=zstd
 
 PRIORITY=100
 
 change the things in that file like above and remove '#' before PERCENT/ALGO/PRIORITY
+
+you can lzo aslo for ALGO instead of zstd
 
 Percent is how much zram you want like here 75 percent of my ram i.e, like 24 gb for 32gb physical ram
 
