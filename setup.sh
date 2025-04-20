@@ -6,7 +6,7 @@ sudo apt update -y && sudo apt upgrade -y
 
 sudo apt install zram-tools -y
 
-sudo apt install linux-modules-extra-$(uname -r)
+sudo apt install linux-modules-extra-$(uname -r) -y
 
 lsmod | grep zram
 
