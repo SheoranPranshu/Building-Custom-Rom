@@ -1,6 +1,10 @@
-sudo apt update && sudo apt upgrade 
+sudo apt install unzip -y
 
-sudo apt update && sudo apt install zram-tools
+sudo apt install git-all -y
+
+sudo apt update -y && sudo apt upgrade -y
+
+sudo apt install zram-tools -y
 
 sudo apt install linux-modules-extra-$(uname -r)
 
