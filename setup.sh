@@ -1,6 +1,6 @@
 sudo apt install unzip -y
 
-sudo apt install git-all -y
+sudo apt install git -y
 
 sudo apt install tmux -y
 
