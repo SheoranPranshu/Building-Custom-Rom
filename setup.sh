@@ -2,6 +2,8 @@ sudo apt install unzip -y
 
 sudo apt install git-all -y
 
+sudo apt install tmux -y
+
 sudo apt update -y && sudo apt upgrade -y
 
 sudo apt install zram-tools -y
