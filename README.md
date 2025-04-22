@@ -1,6 +1,4 @@
-just do as below
-
-Will Update Further If got time :)
+# Just copy paste as below 
 
 ```
 wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/setup.sh && chmod +x setup.sh && ./setup.sh
