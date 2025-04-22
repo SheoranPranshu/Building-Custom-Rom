@@ -1,3 +1,5 @@
+sudo apt update -y && sudo apt upgrade -y
+
 sudo apt install unzip -y
 
 sudo apt install tmate -y
@@ -29,4 +31,6 @@ cd scripts
 mkdir -p ~/bin
 
 curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+
+sudo apt update -y && sudo apt upgrade -y
 chmod a+x ~/bin/repo
