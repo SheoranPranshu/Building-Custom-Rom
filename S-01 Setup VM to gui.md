@@ -64,10 +64,15 @@ reboot
 3)create a new firewall rules
 
 4) Name - nomachine-fw
+
 Description - nomachine-fw
+
 logs - off
+
 Target Tags - nomachine-fw
+
 source IPv4 Ranges - 0.0.0.0/0
+
 tick/turn on the TCP then Ports - 4000
 
 now click on create
