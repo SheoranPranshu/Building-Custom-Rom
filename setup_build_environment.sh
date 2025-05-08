@@ -10,14 +10,6 @@ sudo apt install tmux -y
 
 sudo apt update -y && sudo apt upgrade -y
 
-sudo apt install zram-tools -y
-
-sudo apt install linux-modules-extra-$(uname -r) -y
-
-lsmod | grep zram
-
-sudo modprobe zram
-
 cd ~/
 wget https://dl.google.com/android/repository/platform-tools-latest-linux.zip
 
@@ -25,6 +17,7 @@ unzip platform-tools-latest-linux.zip -d ~
 
 cd ~/
 git clone https://github.com/akhilnarang/scripts
+
 cd scripts
 ./setup/android_build_env.sh
 
