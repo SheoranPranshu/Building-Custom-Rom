@@ -66,12 +66,12 @@ III) Create a new firewall rule
 
 IV) Enter these details for rules
 
-a) Name - nomachine-fw
-b)Description - nomachine-fw
-c)logs - off
-d)Target Tags - nomachine-fw
-e)source IPv4 Ranges - 0.0.0.0/0
-f)turn on the TCP then in Ports - 4000
+-a) Name - nomachine-fw
+-b)Description - nomachine-fw
+-c)logs - off
+-d)Target Tags - nomachine-fw
+-e)source IPv4 Ranges - 0.0.0.0/0
+-f)turn on the TCP then in Ports - 4000
 
 V) Now click on create
 
