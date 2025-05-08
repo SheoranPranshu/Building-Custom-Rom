@@ -11,7 +11,9 @@ sudo apt update && sudo apt install zram-tools
 sudo nano /etc/default/zramswap
 ```
 
-3. Change the things as below/per requirement.
+3. Change the things as per requirement.
+
+- Change accordingly
   - PERCENT=75
   - ALGO=zstd
   - PRIORITY=100
