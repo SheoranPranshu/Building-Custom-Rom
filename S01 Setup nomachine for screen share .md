@@ -13,45 +13,45 @@ sudo apt install ubuntu-gnome-desktop -y
 sudo adduser <username>
 ```
 
--Then give it password (Dont't leave empty)
--You can skip other fields. 
+- Then give it password (Dont't leave empty)
+- You can skip other fields. 
 
--Now to give it superuser rights enter this command
+- Now to give it superuser rights enter this command
 ```
 sudo usermod -aG sudo,adm <username>
 ```
 
--To get into root directory of user
+- To get into root directory of user
 ```
 sudo -i
 ```
 
--Now lets check if password is set
+- Now lets check if password is set
 ```
 cat /etc/ssh/sshd_config
 ```
-Now we have to search for PasswordAuthentication if it is yes, you are good to go but if it's not you have to modify it to yes.
+- Now we have to search for PasswordAuthentication if it is yes, you are good to go but if it's not you have to modify it to yes.
 
--If it's no then let me show how to change it
+- If it's no then let me show how to change it
 ```
 nano /etc/ssh/sshd_config
 ```
 
--Remove # before PasswordAuthentication and then change no to yes
--After that then click ctrl+x then Y after that you are good to go 
+- Remove # before PasswordAuthentication and then change no to yes
+- After that then click ctrl+x then Y after that you are good to go 
 
--Let's download nomachine to screenshare and control via other device 
+- Let's download nomachine to screenshare and control via other device 
 (For download link search nomachine on browser and get download link for the software which is on VM) 
 ```
 wget <download link for nomachine deb file for x86/64>
 ```
 
-Lets's run/setup nomachine in VM
+- Let's run/setup nomachine in VM
 ```
 sudo dpkg -i <name of the nomachine file you downloaded above>
 ```
 
-Now reboot
+- Now reboot
 ```
 sudo reboot
 ```
@@ -66,12 +66,12 @@ III) Create a new firewall rule
 
 IV) Enter these details for rules
 
--a) Name - nomachine-fw
--b)Description - nomachine-fw
--c)logs - off
--d)Target Tags - nomachine-fw
--e)source IPv4 Ranges - 0.0.0.0/0
--f)turn on the TCP then in Ports - 4000
+- a) Name - nomachine-fw
+- b)Description - nomachine-fw
+- c)logs - off
+- d)Target Tags - nomachine-fw
+- e)source IPv4 Ranges - 0.0.0.0/0
+- f)turn on the TCP then in Ports - 4000
 
 V) Now click on create
 
