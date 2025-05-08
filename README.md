@@ -11,7 +11,7 @@ cd ~/
 nano ~/.profile
 ```
 
-Just enter the following text at the bottom of the file that opens up, save it and close.
+- Just enter the following text at the bottom of the file that opens up, save it and close.
 
 ```bash
 # add Android SDK platform tools to path
