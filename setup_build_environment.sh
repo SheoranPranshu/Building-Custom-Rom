@@ -8,6 +8,10 @@ sudo apt install git -y
 
 sudo apt install tmux -y
 
+sudo apt install ccache -y
+
+sudo apt install zip -y
+
 sudo apt update -y && sudo apt upgrade -y
 
 cd ~/
@@ -18,8 +22,7 @@ unzip platform-tools-latest-linux.zip -d ~
 cd ~/
 git clone https://github.com/akhilnarang/scripts
 
-cd scripts
-./setup/android_build_env.sh
+./scripts/setup/android_build_env.sh
 
 mkdir -p ~/bin
 
