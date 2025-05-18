@@ -22,7 +22,9 @@ unzip platform-tools-latest-linux.zip -d ~
 cd ~/
 git clone https://github.com/akhilnarang/scripts
 
-./scripts/setup/android_build_env.sh
+cd scripts
+
+./setup/android_build_env.sh
 
 mkdir -p ~/bin
 
