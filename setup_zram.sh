@@ -9,7 +9,7 @@ sudo apt install -y zram-tools
 # 2. Configure /etc/default/zramswap
 #    Set PERCENT, ALGO, PRIORITY
 CONFIG="/etc/default/zramswap"
-PERCENT=75
+PERCENT=50
 ALGO=zstd
 PRIORITY=100
 
