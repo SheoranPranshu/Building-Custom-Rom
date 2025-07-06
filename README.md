@@ -1,4 +1,3 @@
-Got it! Here is a simpler and more direct version.
 
 ---
 
