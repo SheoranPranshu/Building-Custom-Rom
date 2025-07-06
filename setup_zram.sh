@@ -1,108 +1,140 @@
 #!/usr/bin/env bash
 
 #
-# ZRAM Setup Script
-# A stylish and simple way to configure zram-tools.
+# Usage: sudo ./zram-setup.sh [-p percent] [-a algo] [-r priority] [-h]
 #
 
-# --- Configuration ---
-# You can change these values
+set -eo pipefail
+
+# --- Defaults (override with flags) ---
 ZRAM_PERCENT=69
 ZRAM_ALGO=zstd
 ZRAM_PRIORITY=100
 
-# --- Script Internals ---
-# Exit on any error
-set -eo pipefail
+# --- Colors & Icons ---
+C_BLUE="\033[1;34m"
+C_GREEN="\033[1;32m"
+C_YELLOW="\033[1;33m"
+C_RED="\033[1;31m"
+C_NC="\033[0m"
 
-# Colors
-C_BLUE='\033[1;34m'
-C_GREEN='\033[1;32m'
-C_YELLOW='\033[1;33m'
-C_RED='\033[1;31m'
-C_NC='\033[0m' # No Color
-
-# Icons
 ICON_SETUP="⚙️"
-ICON_ROCKET="🚀"
 ICON_OK="✓"
 ICON_FAIL="✗"
 ICON_INFO="ℹ️"
+ICON_ROCKET="🚀"
 
-# Helper function to run a command with a spinner and nice output
-run_task() {
-    local msg=$1
-    shift
-    local cmd=$@
-    local spinner="/|\\-"
-    local i=0
+# --- Usage message ---
+usage(){
+  cat <<EOF
+${ICON_INFO} Usage: sudo $0 [options]
 
-    # Run command in the background, redirecting output
-    $cmd &> /tmp/zram_setup.log &
-    local pid=$!
-
-    # Show spinner
-    printf "${C_BLUE}%s  %s... ${C_NC}" "$ICON_SETUP" "$msg"
-    while kill -0 $pid 2>/dev/null; do
-        printf "\b%s" "${spinner:i++%4:1}"
-        sleep 0.1
-    done
-
-    # Check the command's exit code
-    if wait $pid; then
-        printf "\b${C_GREEN}%s${C_NC}\n" "$ICON_OK"
-    else
-        printf "\b${C_RED}%s${C_NC}\n" "$ICON_FAIL"
-        echo -e "${C_YELLOW}--- ERROR LOG ---${C_NC}" >&2
-        cat /tmp/zram_setup.log >&2
-        echo -e "${C_YELLOW}-----------------${C_NC}" >&2
-        exit 1
-    fi
+  -p PERCENT   ZRAM size as % of RAM (default: ${ZRAM_PERCENT})
+  -a ALGO      Compression algo (default: ${ZRAM_ALGO})
+  -r PRIORITY  zram priority (default: ${ZRAM_PRIORITY})
+  -h           Show this help and exit
+EOF
 }
 
-# --- Main Script Logic ---
-main() {
-    # Check for root/sudo access
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${C_RED}${ICON_FAIL} This script must be run with sudo privileges.${C_NC}"
-        echo "Please run it as: sudo $0"
-        exit 1
-    fi
+# --- Parse flags ---
+while getopts "p:a:r:h" opt; do
+  case $opt in
+    p) ZRAM_PERCENT=$OPTARG ;;
+    a) ZRAM_ALGO=$OPTARG   ;;
+    r) ZRAM_PRIORITY=$OPTARG ;;
+    h) usage; exit 0      ;;
+    *) usage; exit 1      ;;
+  esac
+done
 
-    # Header
-    echo -e "${C_BLUE}--- ${ICON_ROCKET} ZRAM Quick Setup ---${C_NC}"
-    
-    # 1. Install packages
-    run_task "Updating package lists" "apt-get update"
-    run_task "Installing zram-tools & kernel extras" "apt-get install -y zram-tools linux-modules-extra-$(uname -r)"
+# --- Ensure root ---
+if (( EUID != 0 )); then
+  echo -e "${C_RED}${ICON_FAIL} Please run as root.${C_NC}"
+  exit 1
+fi
 
-    # 2. Configure zram
-    local config_msg="Configuring algorithm to ${C_YELLOW}${ZRAM_ALGO}${C_NC} (${C_YELLOW}${ZRAM_PERCENT}%${C_NC} of RAM)"
-    local config_cmd="sed -i -r \
-        -e 's|^#?ALGO=.*|ALGO=${ZRAM_ALGO}|' \
-        -e 's|^#?PERCENT=.*|PERCENT=${ZRAM_PERCENT}|' \
-        -e 's|^#?PRIORITY=.*|PRIORITY=${ZRAM_PRIORITY}|' \
-        /etc/default/zramswap"
-    run_task "$config_msg" "$config_cmd"
+# --- Temporary log & cleanup trap ---
+LOGFILE=$(mktemp /tmp/zram_setup.XXXXXX)
+trap 'rm -f "$LOGFILE"' EXIT
 
-    # 3. Restart the service
-    run_task "Restarting zram service" "systemctl restart zramswap"
-    
-    # 4. Final summary
-    echo
-    echo -e "${C_GREEN}--- ${ICON_OK} ZRAM is Active ---${C_NC}"
-    local status=$(swapon --show | grep '/dev/zram')
-    local zram_device=$(echo "$status" | awk '{print $1}')
-    local zram_size=$(echo "$status" | awk '{print $3}')
-    
-    echo -e "╭────────────────────────────────────╮"
-    echo -e "│                                    │"
-    echo -e "│  Device:   ${C_YELLOW}${zram_device}${C_NC}            │"
-    echo -e "│  Size:     ${C_GREEN}${zram_size}${C_NC}                 │"
-    echo -e "│  Priority: ${C_BLUE}${ZRAM_PRIORITY}${C_NC}               │"
-    echo -e "│                                    │"
-    echo -e "╰────────────────────────────────────╯"
+# --- Detect package manager ---
+if   command -v apt-get &>/dev/null; then    PKG_INSTALL="apt-get install -y";  PKG_UPDATE="apt-get update -y"
+elif command -v dnf &>/dev/null;    then    PKG_INSTALL="dnf install -y";      PKG_UPDATE="dnf check-update -y"
+elif command -v pacman &>/dev/null; then    PKG_INSTALL="pacman -S --noconfirm"; PKG_UPDATE="pacman -Sy"
+else
+  echo -e "${C_RED}${ICON_FAIL} Unsupported distro.${C_NC}"
+  exit 1
+fi
+
+# --- Detect service name ---
+SERVICE_NAME=zramswap
+if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
+  SERVICE_NAME=zram
+fi
+
+# --- Spinner-backed task runner ---
+run_task(){
+  local msg=$1; shift
+  local cmd=( "$@" )
+  printf "${C_BLUE}%s  %s... ${C_NC}" "$ICON_SETUP" "$msg"
+  "${cmd[@]}" &> "$LOGFILE" &
+  local pid=$!
+  trap 'kill $pid 2>/dev/null; exit 1' INT TERM
+
+  local spinner='|/-\'
+  local i=0
+  while kill -0 "$pid" 2>/dev/null; do
+    printf "\b${spinner:i++%${#spinner}:1}"
+    sleep 0.1
+  done
+
+  if wait "$pid"; then
+    printf "\b${C_GREEN}%s${C_NC}\n" "$ICON_OK"
+  else
+    printf "\b${C_RED}%s${C_NC}\n" "$ICON_FAIL"
+    echo -e "${C_YELLOW}--- ERROR LOG ---${C_NC}" >&2
+    cat "$LOGFILE" >&2
+    exit 1
+  fi
 }
 
-# Run the main function
-main
+# --- Begin ---
+echo -e "${C_BLUE}--- ${ICON_ROCKET} ZRAM Quick Setup ---${C_NC}"
+
+run_task "Updating package lists" $PKG_UPDATE
+run_task "Installing zram-tools"    $PKG_INSTALL zram-tools
+
+# Backup existing config
+if [[ -f /etc/default/zramswap ]]; then
+  run_task "Backing up old config" cp /etc/default/zramswap{,.orig}
+fi
+
+# Write new config
+run_task "Writing /etc/default/zramswap" bash -c "cat > /etc/default/zramswap <<EOF
+ALGO=${ZRAM_ALGO}
+PERCENT=${ZRAM_PERCENT}
+PRIORITY=${ZRAM_PRIORITY}
+EOF
+"
+
+# Restart service
+run_task "Restarting ${SERVICE_NAME} service" systemctl restart "${SERVICE_NAME}.service"
+
+# --- Final Summary ---
+echo
+echo -e "${C_GREEN}--- ${ICON_OK} ZRAM is Active! ---${C_NC}"
+SWAP_INFO=$(swapon --show=NAME,SIZE,PRIO --bytes | grep zram)
+if [[ -z "$SWAP_INFO" ]]; then
+  echo -e "${C_RED}${ICON_FAIL} No zram device detected!${C_NC}"
+  exit 1
+fi
+
+# Pretty‑print with printf
+IFS=$'\n' read -r name size prio <<<"$(awk '{print $1,$2,$3}' <<<"$SWAP_INFO")"
+printf "╭────────────────────────────────────╮\n"
+printf "│ %-10s : %-12s │\n" "Device"   "$name"
+printf "│ %-10s : %-12s │\n" "Size"     "$size"
+printf "│ %-10s : %-12s │\n" "Priority" "$prio"
+printf "╰────────────────────────────────────╯\n"
+
+echo -e "${C_YELLOW}Configured ALGO=${ZRAM_ALGO}, PERCENT=${ZRAM_PERCENT}%, PRIORITY=${ZRAM_PRIORITY}${C_NC}"
