@@ -8,7 +8,7 @@
 wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/setup_ubuntu_22.sh && chmod +x setup_ubuntu_22.sh && ./setup_ubuntu_22.sh && rm setup_ubuntu_22.sh
 ```
 
-### ✨ **For Ubuntu 24.04 LTS**
+### ✨ **For Ubuntu 24.04 LTS** (Not working atm ig)
 ```bash
 wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/setup_ubuntu_24.sh && chmod +x setup_ubuntu_24.sh && sudo ./setup_ubuntu_24.sh && rm setup_ubuntu_24.sh
 ```
