@@ -13,6 +13,9 @@ wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/se
 wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/setup_ubuntu_24.sh && chmod +x setup_ubuntu_24.sh && sudo ./setup_ubuntu_24.sh && rm setup_ubuntu_24.sh
 ```
 
+---
+---
+
 ### 🧠 **Setup ZRAM (70% of RAM)**
 *This is a recommended performance boost for building.*
 ```bash
