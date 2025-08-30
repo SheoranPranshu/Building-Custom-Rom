@@ -7,7 +7,7 @@ Set up a complete Android ROM development environment with ZRAM optimization on 
 ## Ubuntu 22.04 LTS Setup
 
 ```bash
-wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/setup_ubuntu_22.sh \
+wget https://github.com/sheoranpranshu/Building-Custom-Rom/raw/refs/heads/main/scripts/setup_ubuntu_22.sh \
   && chmod +x setup_ubuntu_22.sh \
   && sudo ./setup_ubuntu_22.sh \
   && rm setup_ubuntu_22.sh
@@ -20,7 +20,7 @@ wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/se
 > Note: This script is currently unstable and may not work as expected.
 
 ```bash
-wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/setup_ubuntu_24.sh \
+wget https://github.com/sheoranpranshu/Building-Custom-Rom/raw/refs/heads/main/scripts/setup_ubuntu_24.sh \
   && chmod +x setup_ubuntu_24.sh \
   && sudo ./setup_ubuntu_24.sh \
   && rm setup_ubuntu_24.sh
@@ -35,7 +35,7 @@ Optimize memory usage by enabling ZRAM with 70% of your system's RAM:
 ### Download Script
 
 ```bash
-wget https://github.com/glitch-wraith/Building-Custom-Rom/raw/refs/heads/main/setup_zram.sh \
+wget https://github.com/sheoranpranshu/Building-Custom-Rom/raw/refs/heads/main/scripts/setup_zram.sh \
   && chmod +x setup_zram.sh
 ```
 
