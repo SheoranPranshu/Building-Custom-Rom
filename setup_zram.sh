@@ -92,7 +92,7 @@ detect_system() {
 # --- Header & info ---
 print_header() {
   echo -e "${C_CYAN}╭──────────────────────────────────────────────────────────╮${C_NC}"
-  echo -e "${C_CYAN}│ ${ICON_ZRAM} ${C_BOLD}ZRAM SETUP${C_NC} ${C_BLUE}${ICON_SPEED} Professional Memory Optimizer${C_NC} ${C_CYAN}│${C_NC}"
+  echo -e "${C_CYAN}│ ${ICON_ZRAM} ${C_BOLD}ZRAM SETUP${C_NC} ${C_BLUE}${ICON_SPEED} aka Memory Detonator${C_NC} ${C_CYAN}│${C_NC}"
   echo -e "${C_CYAN}╰──────────────────────────────────────────────────────────╯${C_NC}"
 }
 
