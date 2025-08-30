@@ -1,75 +1,49 @@
 #!/usr/bin/env bash
 
 #
-# ZRAM Quick Setup Script
+# ZRAM Quick Setup Script 
 # Usage: sudo ./zram-setup.sh [-p percent] [-a algo] [-r priority] [-h]
 #
 
 set -eo pipefail
 
-# --- Script Info ---
-SCRIPT_NAME="ZRAM Quick Setup"
-SCRIPT_VERSION="2.1.0"
-SCRIPT_AUTHOR="Enhanced Professional Edition"
-
-# --- Defaults (override with flags) ---
+# --- Defaults ---
 ZRAM_PERCENT=69
 ZRAM_ALGO=zstd
 ZRAM_PRIORITY=100
 
-# --- Enhanced Colors & Styling ---
-C_HEADER="\033[1;36m"     # Bright Cyan
-C_BLUE="\033[1;34m"       # Bright Blue
-C_GREEN="\033[1;32m"      # Bright Green
-C_YELLOW="\033[1;33m"     # Bright Yellow
-C_RED="\033[1;31m"        # Bright Red
-C_PURPLE="\033[1;35m"     # Bright Purple
-C_GRAY="\033[0;37m"       # Light Gray
-C_BOLD="\033[1m"          # Bold
-C_DIM="\033[2m"           # Dim
-C_NC="\033[0m"            # No Color
+# --- Clean Colors ---
+C_CYAN="\033[96m"
+C_GREEN="\033[92m"
+C_YELLOW="\033[93m"
+C_RED="\033[91m"
+C_BLUE="\033[94m"
+C_BOLD="\033[1m"
+C_DIM="\033[2m"
+C_NC="\033[0m"
 
-# --- Professional Icons ---
-ICON_SETUP="⚙️ "
-ICON_OK="✅"
-ICON_FAIL="❌"
-ICON_INFO="ℹ️ "
-ICON_ROCKET="🚀"
-ICON_GEAR="⚡"
-ICON_SHIELD="🛡️ "
-ICON_MEMORY="💾"
-ICON_SPEED="⚡"
+# --- Simple Icons ---
+OK="✓"
+FAIL="✗"
+ARROW="→"
+DOT="•"
 
-# --- Professional Banner ---
-print_banner() {
-  local width=70
-  echo -e "${C_HEADER}"
-  printf "╔═%.0s╗\n" $(seq 1 $((width-2)))
-  printf "║%*s║\n" $((width-2)) ""
-  printf "║%*s%s%*s║\n" $(((width-2-${#SCRIPT_NAME})/2)) "" "$SCRIPT_NAME" $(((width-2-${#SCRIPT_NAME})/2)) ""
-  printf "║%*s%s v%s%*s║\n" $(((width-2-${#SCRIPT_VERSION}-3)/2)) "" "Professional Edition" "$SCRIPT_VERSION" $(((width-2-${#SCRIPT_VERSION}-3)/2)) ""
-  printf "║%*s║\n" $((width-2)) ""
-  printf "╚═%.0s╝\n" $(seq 1 $((width-2)))
-  echo -e "${C_NC}"
+# --- Clean Header ---
+print_header() {
+  echo -e "${C_CYAN}${C_BOLD}┌─────────────────────────────────────────┐${C_NC}"
+  echo -e "${C_CYAN}${C_BOLD}│          ZRAM SETUP UTILITY             │${C_NC}"
+  echo -e "${C_CYAN}${C_BOLD}└─────────────────────────────────────────┘${C_NC}"
 }
 
-# --- Enhanced Usage message ---
+# --- Usage ---
 usage(){
-  echo -e "${C_HEADER}╭─────────────────────────────────────────────────────────╮${C_NC}"
-  echo -e "${C_HEADER}│                      ${C_BOLD}USAGE GUIDE${C_NC}${C_HEADER}                         │${C_NC}"
-  echo -e "${C_HEADER}╰─────────────────────────────────────────────────────────╯${C_NC}"
+  echo -e "${C_BOLD}Usage:${C_NC} sudo $0 [options]"
   echo
-  echo -e "${C_BLUE}${ICON_INFO}${C_BOLD}Syntax:${C_NC} ${C_GREEN}sudo $0 [options]${C_NC}"
-  echo
-  echo -e "${C_PURPLE}${C_BOLD}Options:${C_NC}"
-  echo -e "  ${C_YELLOW}-p PERCENT${C_NC}   ${C_GRAY}ZRAM size as % of RAM${C_NC} ${C_DIM}(default: ${ZRAM_PERCENT}%)${C_NC}"
-  echo -e "  ${C_YELLOW}-a ALGO${C_NC}      ${C_GRAY}Compression algorithm${C_NC} ${C_DIM}(default: ${ZRAM_ALGO})${C_NC}"
-  echo -e "  ${C_YELLOW}-r PRIORITY${C_NC}  ${C_GRAY}Swap priority level${C_NC}    ${C_DIM}(default: ${ZRAM_PRIORITY})${C_NC}"
-  echo -e "  ${C_YELLOW}-h${C_NC}           ${C_GRAY}Show this help and exit${C_NC}"
-  echo
-  echo -e "${C_BLUE}${C_BOLD}Examples:${C_NC}"
-  echo -e "  ${C_GREEN}sudo $0 -p 50 -a lz4${C_NC}     ${C_GRAY}# 50% RAM, LZ4 compression${C_NC}"
-  echo -e "  ${C_GREEN}sudo $0 -r 200${C_NC}           ${C_GRAY}# Higher priority swap${C_NC}"
+  echo -e "${C_YELLOW}Options:${C_NC}"
+  echo -e "  -p NUM    ZRAM size % of RAM (default: ${ZRAM_PERCENT})"
+  echo -e "  -a ALGO   Compression (default: ${ZRAM_ALGO})"
+  echo -e "  -r NUM    Priority (default: ${ZRAM_PRIORITY})"
+  echo -e "  -h        Show help"
   echo
 }
 
@@ -84,291 +58,174 @@ while getopts "p:a:r:h" opt; do
   esac
 done
 
-# --- Professional privilege check ---
-check_privileges() {
-  if (( EUID != 0 )); then
-    echo -e "${C_RED}╭─────────────────────────────────────╮${C_NC}"
-    echo -e "${C_RED}│ ${ICON_FAIL} ${C_BOLD}ROOT PRIVILEGES REQUIRED${C_NC}${C_RED}     │${C_NC}"
-    echo -e "${C_RED}╰─────────────────────────────────────╯${C_NC}"
-    echo -e "${C_YELLOW}${ICON_INFO}Please run with: ${C_GREEN}sudo $0${C_NC}"
-    exit 1
-  fi
-}
+# --- Root check ---
+if (( EUID != 0 )); then
+  echo -e "${C_RED}${FAIL} Root privileges required${C_NC}"
+  exit 1
+fi
 
-# --- System info display ---
-show_system_info() {
-  local total_ram=$(free -h | awk '/^Mem:/ {print $2}')
-  local kernel_ver=$(uname -r)
-  local distro=$(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
-  
-  echo -e "${C_HEADER}╭─────────────────────────────────────────────────────────╮${C_NC}"
-  echo -e "${C_HEADER}│                   ${C_BOLD}SYSTEM INFORMATION${C_NC}${C_HEADER}                   │${C_NC}"
-  echo -e "${C_HEADER}╰─────────────────────────────────────────────────────────╯${C_NC}"
-  echo -e "${C_BLUE}${ICON_MEMORY}${C_BOLD}Total RAM:${C_NC}     ${C_GREEN}${total_ram}${C_NC}"
-  echo -e "${C_BLUE}${ICON_GEAR}${C_BOLD}Kernel:${C_NC}        ${C_GREEN}${kernel_ver}${C_NC}"
-  echo -e "${C_BLUE}${ICON_SHIELD}${C_BOLD}Distribution:${C_NC}  ${C_GREEN}${distro}${C_NC}"
-  echo
-}
-
-# --- Configuration display ---
-show_config() {
-  echo -e "${C_PURPLE}╭─────────────────────────────────────────────────────────╮${C_NC}"
-  echo -e "${C_PURPLE}│                  ${C_BOLD}CONFIGURATION SETTINGS${C_NC}${C_PURPLE}                 │${C_NC}"
-  echo -e "${C_PURPLE}╰─────────────────────────────────────────────────────────╯${C_NC}"
-  echo -e "${C_YELLOW}${ICON_MEMORY}${C_BOLD}ZRAM Size:${C_NC}       ${C_GREEN}${ZRAM_PERCENT}% of RAM${C_NC}"
-  echo -e "${C_YELLOW}${ICON_SPEED}${C_BOLD}Algorithm:${C_NC}       ${C_GREEN}${ZRAM_ALGO}${C_NC}"
-  echo -e "${C_YELLOW}${ICON_GEAR}${C_BOLD}Priority:${C_NC}        ${C_GREEN}${ZRAM_PRIORITY}${C_NC}"
-  echo
-}
-
-# --- Temporary log & cleanup trap ---
+# --- Temporary log ---
 LOGFILE=$(mktemp /tmp/zram_setup.XXXXXX)
 trap 'rm -f "$LOGFILE"' EXIT
 
-# --- Enhanced package manager detection ---
-detect_package_manager() {
-  if   command -v apt-get &>/dev/null; then
-    PKG_CMD="apt-get"
-    PKG_INSTALL="apt-get install -y"
-    PKG_UPDATE="apt-get update -y"
-    DISTRO_TYPE="debian"
-  elif command -v dnf &>/dev/null; then
-    PKG_CMD="dnf"
-    PKG_INSTALL="dnf install -y"
-    PKG_UPDATE="dnf check-update -y"
-    DISTRO_TYPE="fedora"
-  elif command -v pacman &>/dev/null; then
-    PKG_CMD="pacman"
-    PKG_INSTALL="pacman -S --noconfirm"
-    PKG_UPDATE="pacman -Sy"
-    DISTRO_TYPE="arch"
-  else
-    echo -e "${C_RED}╭─────────────────────────────────────╮${C_NC}"
-    echo -e "${C_RED}│ ${ICON_FAIL} ${C_BOLD}UNSUPPORTED DISTRIBUTION${C_NC}${C_RED}     │${C_NC}"
-    echo -e "${C_RED}╰─────────────────────────────────────╯${C_NC}"
-    echo -e "${C_YELLOW}${ICON_INFO}Supported: Debian/Ubuntu, Fedora/RHEL, Arch Linux${C_NC}"
-    exit 1
-  fi
+# --- Package manager detection ---
+detect_pm() {
+  if   command -v apt-get &>/dev/null; then PKG_INSTALL="apt-get install -y"; PKG_UPDATE="apt-get update -y"; DISTRO="debian"
+  elif command -v dnf &>/dev/null;     then PKG_INSTALL="dnf install -y";     PKG_UPDATE="dnf check-update -y"; DISTRO="fedora"
+  elif command -v pacman &>/dev/null;  then PKG_INSTALL="pacman -S --noconfirm"; PKG_UPDATE="pacman -Sy"; DISTRO="arch"
+  else echo -e "${C_RED}${FAIL} Unsupported distribution${C_NC}"; exit 1; fi
 }
 
-# --- Enhanced service detection ---
+# --- Service detection ---
 detect_service() {
   SERVICE_NAME=zramswap
   if ! systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}.service"; then
     SERVICE_NAME=zram
-    if ! systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}.service"; then
-      echo -e "${C_YELLOW}${ICON_INFO}No existing ZRAM service found. Will install fresh.${C_NC}"
-    fi
   fi
 }
 
-# --- Enhanced spinner-backed task runner ---
+# --- Clean task runner ---
 run_task(){
   local msg=$1; shift
-  local cmd=( "$@" )
-  
-  # Enhanced status line
-  printf "${C_BLUE}${ICON_SETUP}${C_BOLD}%-40s${C_NC}" "$msg"
-  printf "${C_DIM}[${C_NC}"
-  
-  "${cmd[@]}" &> "$LOGFILE" &
-  local pid=$!
-  trap 'kill $pid 2>/dev/null; exit 1' INT TERM
-
-  # Professional spinner
-  local spinner='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-  local i=0
-  while kill -0 "$pid" 2>/dev/null; do
-    printf "\b\b${C_BLUE}${spinner:i++%${#spinner}:1}${C_DIM}]${C_NC}"
-    sleep 0.08
-  done
-
-  if wait "$pid"; then
-    printf "\b\b${C_GREEN}${ICON_OK}${C_DIM}]${C_NC}\n"
+  printf "${C_BLUE}${DOT}${C_NC} %-35s " "$msg"
+  if "$@" &> "$LOGFILE"; then
+    echo -e "${C_GREEN}${OK}${C_NC}"
   else
-    printf "\b\b${C_RED}${ICON_FAIL}${C_DIM}]${C_NC}\n"
-    echo
-    echo -e "${C_RED}╭─────────────────────────────────────────────────────────╮${C_NC}"
-    echo -e "${C_RED}│                    ${C_BOLD}ERROR DETAILS${C_NC}${C_RED}                        │${C_NC}"
-    echo -e "${C_RED}╰─────────────────────────────────────────────────────────╯${C_NC}"
-    sed 's/^/  /' "$LOGFILE" >&2
+    echo -e "${C_RED}${FAIL}${C_NC}"
+    echo -e "${C_RED}Error details:${C_NC}" >&2
+    cat "$LOGFILE" >&2
     exit 1
   fi
 }
 
-# --- Progress bar function ---
-show_progress() {
-  local current=$1
-  local total=$2
-  local width=40
-  local percentage=$((current * 100 / total))
-  local filled=$((current * width / total))
-  
-  printf "\r${C_BLUE}Progress: ${C_NC}["
-  printf "%*s" $filled | tr ' ' '█'
-  printf "%*s" $((width - filled)) | tr ' ' '░'
-  printf "] ${C_BOLD}%d%%${C_NC}" $percentage
+# --- Get system info ---
+get_system_info() {
+  TOTAL_RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+  TOTAL_RAM_GB=$(echo "scale=1; $TOTAL_RAM_KB/1024/1024" | bc)
+  KERNEL_VER=$(uname -r)
+  DISTRO_NAME=$(lsb_release -ds 2>/dev/null || grep PRETTY_NAME /etc/os-release | cut -d'"' -f2 | head -1)
 }
 
-# --- Main execution starts here ---
+# --- Show current memory status ---
+show_memory_status() {
+  local physical_ram=$(free -h | awk '/^Mem:/ {print $2}')
+  local used_ram=$(free -h | awk '/^Mem:/ {print $3}')
+  local available_ram=$(free -h | awk '/^Mem:/ {print $7}')
+  
+  echo -e "${C_BOLD}Current Memory Status:${C_NC}"
+  printf "  Physical RAM: %s (Used: %s, Available: %s)\n" "$physical_ram" "$used_ram" "$available_ram"
+  
+  # Show existing swap
+  local existing_swap=$(swapon --show --noheadings 2>/dev/null | wc -l)
+  if [[ $existing_swap -gt 0 ]]; then
+    echo -e "  Existing swap devices: ${existing_swap}"
+    swapon --show 2>/dev/null | sed 's/^/    /'
+  else
+    echo -e "  No existing swap devices"
+  fi
+}
+
+# --- Main execution ---
 main() {
-  # Clear screen for professional look
   clear
+  print_header
   
-  # Show banner
-  print_banner
+  # System detection
+  get_system_info
+  detect_pm
+  detect_service
   
-  # System checks
-  check_privileges
-  show_system_info
-  show_config
-  
-  # Progress tracking
-  local total_steps=6
-  local current_step=0
-  
-  echo -e "${C_HEADER}╭─────────────────────────────────────────────────────────╮${C_NC}"
-  echo -e "${C_HEADER}│                  ${C_BOLD}INSTALLATION PROGRESS${C_NC}${C_HEADER}                  │${C_NC}"
-  echo -e "${C_HEADER}╰─────────────────────────────────────────────────────────╯${C_NC}"
+  # Show system info compactly
+  echo -e "${C_BOLD}System:${C_NC} $DISTRO_NAME | ${C_BOLD}Kernel:${C_NC} $KERNEL_VER | ${C_BOLD}RAM:${C_NC} ${TOTAL_RAM_GB}GB"
+  echo -e "${C_BOLD}Config:${C_NC} ${ZRAM_PERCENT}% RAM, ${ZRAM_ALGO} compression, priority ${ZRAM_PRIORITY}"
   echo
   
-  # Step 1: Detect package manager
-  ((current_step++))
-  show_progress $current_step $total_steps
-  detect_package_manager
-  printf "\n"
-  run_task "Detecting package manager (${PKG_CMD})" echo "Package manager: $PKG_CMD"
+  show_memory_status
+  echo
   
-  # Step 2: Update packages
-  ((current_step++))
-  show_progress $current_step $total_steps
-  printf "\n"
+  echo -e "${C_BOLD}Installation Steps:${C_NC}"
+  
+  # Installation tasks
   run_task "Updating package repositories" $PKG_UPDATE
+  run_task "Installing zram-tools" $PKG_INSTALL zram-tools
   
-  # Step 3: Install zram-tools
-  ((current_step++))
-  show_progress $current_step $total_steps
-  printf "\n"
-  run_task "Installing zram-tools package" $PKG_INSTALL zram-tools
-  
-  # Step 4: Ensure kernel modules
-  ((current_step++))
-  show_progress $current_step $total_steps
-  printf "\n"
+  # Kernel modules
   KERNEL_VERSION=$(uname -r)
-  case "$DISTRO_TYPE" in
-    "debian")
-      MODULE_PKG="linux-modules-extra-${KERNEL_VERSION}"
-      run_task "Installing kernel modules (${MODULE_PKG})" $PKG_INSTALL "$MODULE_PKG"
-      ;;
-    "fedora")
-      MODULE_PKG="kernel-modules-${KERNEL_VERSION}"
-      run_task "Installing kernel modules (${MODULE_PKG})" $PKG_INSTALL "$MODULE_PKG"
-      ;;
-    "arch")
-      run_task "Verifying kernel modules (Arch)" echo "Modules included with kernel"
-      ;;
+  case "$DISTRO" in
+    "debian") run_task "Installing kernel modules" $PKG_INSTALL "linux-modules-extra-${KERNEL_VERSION}" ;;
+    "fedora") run_task "Installing kernel modules" $PKG_INSTALL "kernel-modules-${KERNEL_VERSION}" ;;
+    "arch")   run_task "Verifying kernel modules" echo "Modules included with kernel" ;;
   esac
   
-  # Step 5: Configure ZRAM
-  ((current_step++))
-  show_progress $current_step $total_steps
-  printf "\n"
-  
-  # Backup existing config
+  # Configuration
   if [[ -f /etc/default/zramswap ]]; then
-    run_task "Backing up existing configuration" cp /etc/default/zramswap{,.orig}
+    run_task "Backing up existing config" cp /etc/default/zramswap{,.backup}
   fi
   
-  # Write new config
   run_task "Writing ZRAM configuration" bash -c "cat > /etc/default/zramswap <<EOF
-# ZRAM Configuration - Generated by ZRAM Quick Setup
-# $(date)
-
 ALGO=${ZRAM_ALGO}
 PERCENT=${ZRAM_PERCENT}
 PRIORITY=${ZRAM_PRIORITY}
-EOF
-"
+EOF"
   
-  # Step 6: Start service
-  ((current_step++))
-  show_progress $current_step $total_steps
-  printf "\n"
-  detect_service
-  run_task "Activating ZRAM service (${SERVICE_NAME})" systemctl restart "${SERVICE_NAME}.service"
+  run_task "Starting ZRAM service" systemctl restart "${SERVICE_NAME}.service"
+  run_task "Enabling ZRAM at boot" systemctl enable "${SERVICE_NAME}.service"
   
-  # Complete progress
-  show_progress $total_steps $total_steps
-  printf "\n\n"
+  echo
 }
 
-# --- Enhanced final summary ---
-show_final_summary() {
-  echo -e "${C_GREEN}╔═══════════════════════════════════════════════════════════╗${C_NC}"
-  echo -e "${C_GREEN}║ ${ICON_OK} ${C_BOLD}ZRAM SETUP COMPLETED SUCCESSFULLY!${C_NC}${C_GREEN}                ║${C_NC}"
-  echo -e "${C_GREEN}╚═══════════════════════════════════════════════════════════╝${C_NC}"
+# --- Final status ---
+show_final_status() {
+  echo -e "${C_GREEN}${C_BOLD}${OK} ZRAM Setup Complete!${C_NC}"
   echo
   
-  # Get swap information
-  SWAP_INFO=$(swapon --show=NAME,SIZE,PRIO --bytes 2>/dev/null | grep zram || true)
+  # Get current memory info after setup
+  local physical_ram=$(free -h | awk '/^Mem:/ {print $2}')
+  local used_ram=$(free -h | awk '/^Mem:/ {print $3}')
+  local available_ram=$(free -h | awk '/^Mem:/ {print $7}')
   
-  if [[ -z "$SWAP_INFO" ]]; then
-    echo -e "${C_RED}╭─────────────────────────────────────╮${C_NC}"
-    echo -e "${C_RED}│ ${ICON_FAIL} ${C_BOLD}ZRAM DEVICE NOT DETECTED${C_NC}${C_RED}     │${C_NC}"
-    echo -e "${C_RED}╰─────────────────────────────────────╯${C_NC}"
-    echo -e "${C_YELLOW}${ICON_INFO}Try running: ${C_GREEN}sudo systemctl status ${SERVICE_NAME}${C_NC}"
+  echo -e "${C_BOLD}Memory Summary:${C_NC}"
+  printf "  ${C_BLUE}Physical RAM:${C_NC} %s (Used: %s, Available: %s)\n" "$physical_ram" "$used_ram" "$available_ram"
+  
+  # Show ZRAM details
+  local zram_info=$(swapon --show --noheadings 2>/dev/null | grep zram || echo "")
+  if [[ -n "$zram_info" ]]; then
+    local zram_name=$(echo "$zram_info" | awk '{print $1}')
+    local zram_size=$(echo "$zram_info" | awk '{print $2}')
+    local zram_prio=$(echo "$zram_info" | awk '{print $4}')
+    
+    printf "  ${C_GREEN}ZRAM Swap:${C_NC}    %s (%s, Priority: %s)\n" "$zram_size" "$zram_name" "$zram_prio"
+    
+    # Calculate compression stats if available
+    if [[ -r /sys/block/zram0/mm_stat ]]; then
+      local mm_stat=($(cat /sys/block/zram0/mm_stat))
+      local orig_size=$((mm_stat[0]))
+      local comp_size=$((mm_stat[1]))
+      if [[ $orig_size -gt 0 ]]; then
+        local ratio=$(echo "scale=1; $orig_size/$comp_size" | bc 2>/dev/null || echo "N/A")
+        printf "  ${C_YELLOW}Compression:${C_NC}  ${ratio}:1 ratio using ${ZRAM_ALGO}\n"
+      fi
+    fi
+  else
+    echo -e "  ${C_RED}${FAIL} ZRAM device not found!${C_NC}"
     exit 1
   fi
-
-  # Parse swap info
-  local name size prio
-  IFS=$'\n' read -r name size prio <<<"$(awk '{print $1,$2,$3}' <<<"$SWAP_INFO")"
   
-  # Convert bytes to human readable if needed
-  if [[ $size =~ ^[0-9]+$ ]]; then
-    size=$(numfmt --to=iec --suffix=B $size)
-  fi
-  
-  # Professional results table
-  echo -e "${C_HEADER}╭─────────────────────────────────────────────────────────╮${C_NC}"
-  echo -e "${C_HEADER}│                    ${C_BOLD}ZRAM STATISTICS${C_NC}${C_HEADER}                      │${C_NC}"
-  echo -e "${C_HEADER}╰─────────────────────────────────────────────────────────╯${C_NC}"
   echo
-  printf "${C_BLUE}%-20s${C_NC} ${C_GRAY}│${C_NC} ${C_GREEN}%-25s${C_NC}\n" "${ICON_MEMORY}Device Name" "$name"
-  printf "${C_BLUE}%-20s${C_NC} ${C_GRAY}│${C_NC} ${C_GREEN}%-25s${C_NC}\n" "${ICON_SPEED}Allocated Size" "$size"
-  printf "${C_BLUE}%-20s${C_NC} ${C_GRAY}│${C_NC} ${C_GREEN}%-25s${C_NC}\n" "${ICON_GEAR}Swap Priority" "$prio"
-  printf "${C_BLUE}%-20s${C_NC} ${C_GRAY}│${C_NC} ${C_GREEN}%-25s${C_NC}\n" "${ICON_SETUP}Algorithm" "$ZRAM_ALGO"
-  printf "${C_BLUE}%-20s${C_NC} ${C_GRAY}│${C_NC} ${C_GREEN}%-25s${C_NC}\n" "${ICON_INFO}RAM Percentage" "${ZRAM_PERCENT}%"
-  echo
-  
-  # Performance tips
-  echo -e "${C_YELLOW}╭─────────────────────────────────────────────────────────╮${C_NC}"
-  echo -e "${C_YELLOW}│                   ${C_BOLD}PERFORMANCE TIPS${C_NC}${C_YELLOW}                      │${C_NC}"
-  echo -e "${C_YELLOW}╰─────────────────────────────────────────────────────────╯${C_NC}"
-  echo -e "${C_GRAY}• Monitor with: ${C_GREEN}swapon --show${C_NC}"
-  echo -e "${C_GRAY}• Check status: ${C_GREEN}sudo systemctl status ${SERVICE_NAME}${C_NC}"
-  echo -e "${C_GRAY}• View stats:   ${C_GREEN}cat /proc/swaps${C_NC}"
-  echo
-  
-  # Success footer
-  echo -e "${C_GREEN}${ICON_ROCKET}${C_BOLD} ZRAM is now active and optimizing your system performance!${C_NC}"
-  echo -e "${C_DIM}───────────────────────────────────────────────────────────${C_NC}"
+  echo -e "${C_BOLD}Quick Commands:${C_NC}"
+  echo -e "  Status: ${C_DIM}sudo systemctl status ${SERVICE_NAME}${C_NC}"
+  echo -e "  Check:  ${C_DIM}swapon --show${C_NC}"
+  echo -e "  Stats:  ${C_DIM}cat /proc/swaps${C_NC}"
 }
 
 # --- Error handler ---
 error_handler() {
-  echo
-  echo -e "${C_RED}╭─────────────────────────────────────╮${C_NC}"
-  echo -e "${C_RED}│ ${ICON_FAIL} ${C_BOLD}SETUP INTERRUPTED${C_NC}${C_RED}            │${C_NC}"
-  echo -e "${C_RED}╰─────────────────────────────────────╯${C_NC}"
-  echo -e "${C_YELLOW}${ICON_INFO}Check the logs above for details.${C_NC}"
+  echo -e "\n${C_RED}${FAIL} Setup failed. Check logs above.${C_NC}"
   exit 1
 }
 
-# --- Set error handler ---
 trap error_handler ERR INT TERM
 
-# --- Execute main function ---
+# --- Execute ---
 main
-show_final_summary
+show_final_status
