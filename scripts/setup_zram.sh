@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-
-#
-# ZRAM Quick Setup Script
-# Usage: sudo ./setup_zram.sh [-p percent] [-a algo] [-r priority] [-h]
-#
-
+# (your original header/comment lines kept)
 set -eo pipefail
 
 # --- Defaults ---
@@ -64,7 +59,7 @@ fi
 LOGFILE=$(mktemp /tmp/zram_setup.XXXXXX)
 trap 'rm -f "$LOGFILE"' EXIT
 
-# --- Detect package manager & service name ---
+# --- Detect package manager & service names ---
 detect_system() {
   if command -v apt-get &>/dev/null; then
     PKG_INSTALL="apt-get install -y"
@@ -83,10 +78,29 @@ detect_system() {
     exit 1
   fi
 
-  SERVICE_NAME=zramswap
-  if ! systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}\.service"; then
-    SERVICE_NAME=zram
+  # Common service unit name candidates across images/cloud providers
+  SERVICE_CANDIDATES=(zramswap zram zram-swap zram-config)
+
+  # If systemctl exists, try to find a registered unit from the candidate list
+  if command -v systemctl &>/dev/null; then
+    for c in "${SERVICE_CANDIDATES[@]}"; do
+      if systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -qx "${c}.service"; then
+        SERVICE_NAME="$c"
+        return 0
+      fi
+    done
+
+    # last attempt: check if any candidate returns a meaningful status (some distros don't register unit-files)
+    for c in "${SERVICE_CANDIDATES[@]}"; do
+      if systemctl status "${c}.service" &>/dev/null || systemctl status "${c}.service" &>/dev/null; then
+        SERVICE_NAME="$c"
+        return 0
+      fi
+    done
   fi
+
+  # If we reach here, we couldn't detect a registered unit. leave SERVICE_NAME empty
+  SERVICE_NAME=""
 }
 
 # --- Header & info ---
@@ -104,6 +118,11 @@ show_system_info() {
   local distro=$(lsb_release -ds 2>/dev/null || grep PRETTY_NAME /etc/os-release | cut -d'"' -f2 | head -1)
 
   echo -e "${C_PURPLE}${ICON_MEMORY} System:${C_NC} ${distro} ${C_DIM}|${C_NC} ${C_BLUE}Kernel:${C_NC} ${kernel} ${C_DIM}|${C_NC} ${C_GREEN}RAM:${C_NC} ${human_total}"
+  if [[ -n "${SERVICE_NAME}" ]]; then
+    echo -e "${C_ORANGE}${ICON_GEAR} Detected service:${C_NC} ${SERVICE_NAME}.service"
+  else
+    echo -e "${C_ORANGE}${ICON_GEAR} Detected service:${C_NC} ${C_YELLOW}none auto-detected (will try common names)${C_NC}"
+  fi
   echo -e "${C_ORANGE}${ICON_GEAR} Config:${C_NC} ${ZRAM_PERCENT}% RAM, ${ZRAM_ALGO} compression, priority ${ZRAM_PRIORITY}"
 }
 
@@ -148,6 +167,31 @@ run_task(){
   fi
 }
 
+# --- Try service action across candidates (uses run_task so logs/spinner shown) ---
+service_action_try() {
+  local action=$1
+  local label="$action"
+  # if we detected a specific service name, prefer it
+  if [[ -n "${SERVICE_NAME}" ]]; then
+    run_task "${label^} ${SERVICE_NAME}.service" systemctl "${action}" "${SERVICE_NAME}.service"
+    return $?
+  fi
+
+  # otherwise try each candidate in order until one succeeds
+  local cmd
+  cmd="set -e; "
+  for c in "${SERVICE_CANDIDATES[@]}"; do
+    # try and return when the first one succeeds
+    cmd+="(systemctl ${action} ${c}.service && echo '${c}' && exit 0) || true; "
+  done
+  # if none succeed, try the older 'service' interface as last resort (best-effort)
+  cmd+="(command -v service >/dev/null 2>&1 && { service ${SERVICE_CANDIDATES[0]} ${action} >/dev/null 2>&1 || true; } ); exit 1"
+
+  run_task "${label^} (best-effort candidates)" bash -c "$cmd" || {
+    echo -e "${C_YELLOW}${ICON_FAIL} Warning:${C_NC} Could not ${action} any known zram service unit. ${C_DIM}You may need to start the service manually.${C_NC}"
+  }
+}
+
 # --- Main flow ---
 main() {
   clear
@@ -184,8 +228,9 @@ PRIORITY=${ZRAM_PRIORITY}
 EOF
 mv /etc/default/zramswap.tmp /etc/default/zramswap"
 
-  run_task "Starting ZRAM service" systemctl restart "${SERVICE_NAME}.service"
-  run_task "Enabling at boot" systemctl enable "${SERVICE_NAME}.service"
+  # Start/restart + enable at boot (use detection / best-effort)
+  service_action_try restart
+  service_action_try enable
 
   echo
   show_final_summary
@@ -235,7 +280,7 @@ show_final_summary() {
 
   echo
   echo -e "${C_DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
-  echo -e "${C_BOLD}Quick Commands:${C_NC} ${C_DIM}status:${C_NC} ${C_GREEN}systemctl status ${SERVICE_NAME}${C_NC} ${C_DIM}| check:${C_NC} ${C_GREEN}swapon --show${C_NC} ${C_DIM}| stats:${C_NC} ${C_GREEN}cat /proc/swaps${C_NC}"
+  echo -e "${C_BOLD}Quick Commands:${C_NC} ${C_DIM}status:${C_NC} ${C_GREEN}systemctl status ${SERVICE_NAME:-<zramswap|zram|zram-swap>} ${C_NC} ${C_DIM}| check:${C_NC} ${C_GREEN}swapon --show${C_NC} ${C_DIM}| stats:${C_NC} ${C_GREEN}cat /proc/swaps${C_NC}"
   echo
 }
 
