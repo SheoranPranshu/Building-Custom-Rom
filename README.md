@@ -4,13 +4,12 @@ Set up a complete Android ROM development environment with ZRAM optimization on 
 
 ---
 
-## Ubuntu 22.04 LTS Setup
+## Ubuntu 22x and Debian 12x Setup
 
 ```bash
-wget https://github.com/sheoranpranshu/Building-Custom-Rom/raw/refs/heads/main/scripts/setup_ubuntu_22.sh \
-  && chmod +x setup_ubuntu_22.sh \
-  && sudo ./setup_ubuntu_22.sh \
-  && rm setup_ubuntu_22.sh
+wget https://github.com/sheoranpranshu/Building-Custom-Rom/raw/refs/heads/main/scripts/setup_build_environment.sh \
+  && chmod +x setup_build_environment.sh \
+  && sudo ./setup_build_environment.sh
 ```
 
 ---
