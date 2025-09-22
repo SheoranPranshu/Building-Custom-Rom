@@ -1,67 +1,59 @@
-# Custom ROM Build Environment Setup
+# Android ROM Development Environment Setup
 
-Set up a complete Android ROM development environment with ZRAM optimization on Ubuntu.
+This guide establishes a complete Android ROM development environment with ZRAM optimization.
 
----
+## Repository Setup
 
-## Ubuntu 22x and Debian 12x Setup
-
-```bash
-wget https://github.com/sheoranpranshu/Building-Custom-Rom/raw/refs/heads/main/scripts/setup_build_environment.sh \
-  && chmod +x setup_build_environment.sh \
-  && sudo ./setup_build_environment.sh
-```
-
----
-
-## Ubuntu 24.04 LTS Setup (Experimental)
-
-> Note: This script is currently unstable and may not work as expected.
+Create a workspace and clone the configuration repository:
 
 ```bash
-wget https://github.com/sheoranpranshu/Building-Custom-Rom/raw/refs/heads/main/scripts/setup_ubuntu_24.sh \
-  && chmod +x setup_ubuntu_24.sh \
-  && sudo ./setup_ubuntu_24.sh \
-  && rm setup_ubuntu_24.sh
+git clone https://github.com/sheoranpranshu/Building-Custom-Rom.git build-scripts
+cd build-scripts
 ```
 
----
+## Environment Installation
 
-## ZRAM Setup (Recommended for Performance)
+### Ubuntu 22.x and Debian 12.x
 
-Optimize memory usage by enabling ZRAM with 70% of your system's RAM:
-
-### Download Script
+Execute the primary setup script for stable distributions:
 
 ```bash
-wget https://github.com/sheoranpranshu/Building-Custom-Rom/raw/refs/heads/main/scripts/setup_zram.sh \
-  && chmod +x setup_zram.sh
+chmod +x scripts/setup_build_environment.sh
+sudo ./scripts/setup_build_environment.sh
 ```
 
-### Run with Default Settings
+### Ubuntu 24.04 LTS (Experimental)
+
+For Ubuntu 24.04 LTS systems, use the experimental configuration:
 
 ```bash
-sudo ./setup_zram.sh
+chmod +x scripts/setup_ubuntu_24.sh
+sudo ./scripts/setup_ubuntu_24.sh
 ```
 
-### Run with Custom Settings
+## ZRAM Configuration
+
+ZRAM improves build performance by creating compressed swap space in memory. The default configuration allocates 70% of system RAM.
+
+### Standard Setup
 
 ```bash
-sudo ./setup_zram.sh -p <percent> -a <algorithm> -r <priority>
+chmod +x scripts/setup_zram.sh
+sudo ./scripts/setup_zram.sh
 ```
 
-#### Flags:
-
-* `-p` — Size as % of total RAM (e.g., `-p 70`)
-* `-a` — Compression algorithm (`lzo`, `lz4`, `zstd`)
-* `-r` — Swap priority (e.g., `-r 100`)
-
-#### Example:
+### Custom Configuration
 
 ```bash
-sudo ./setup_zram.sh -p 100 -a zstd -r 100
+sudo ./scripts/setup_zram.sh -p <percentage> -a <algorithm> -r <priority>
 ```
 
----
+Configuration options include percentage of RAM allocation, compression algorithm selection (lzo, lz4, zstd), and swap priority settings.
 
-## Happy Building!
+### Recommended Production Setup
+
+```bash
+sudo ./scripts/setup_zram.sh -p 100 -a zstd -r 100
+```
+
+The environment is now ready for Android ROM development with optimized memory management.
