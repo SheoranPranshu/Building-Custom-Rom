@@ -59,7 +59,7 @@ sudo ./setup_zram.sh -p <percent> -a <algorithm> -r <priority>
 #### Example:
 
 ```bash
-sudo ./setup_zram.sh -p 80 -a lzo -r 100
+sudo ./setup_zram.sh -p 100 -a zstd -r 100
 ```
 
 ---
