@@ -11,10 +11,9 @@ cd build-scripts
 
 ## Environment Installation
 
-The setup script automatically detects Ubuntu 22.04 LTS and Debian 12 systems, installing all required development tools, libraries, and Android platform components:
+The setup script is to install all required development tools, libraries, and Android platform components Ubuntu 22.04 LTS
 
 ```bash
-chmod +x scripts/setup_build_environment.sh
 sudo ./scripts/setup_build_environment.sh
 ```
 
@@ -27,7 +26,6 @@ ZRAM creates compressed swap space in memory, significantly improving build perf
 Deploy ZRAM with optimized defaults (69% RAM allocation, ZSTD compression):
 
 ```bash
-chmod +x scripts/setup_zram.sh
 sudo ./scripts/setup_zram.sh
 ```
 

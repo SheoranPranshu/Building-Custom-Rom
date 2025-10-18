@@ -1,216 +1,253 @@
 #!/usr/bin/env bash
 
 #
-# Universal Android Build Environment Setup
-# Configures Debian/Ubuntu systems for AOSP builds.
+# Android Build Environment Setup
+# A streamlined and stylish script to prepare a Debian/Ubuntu system for AOSP builds.
 #
 
-set -e
+# --- Script Internals ---
+set -eo pipefail # Exit on any error
 
+# Colors
 C_BLUE='\033[1;34m'
 C_GREEN='\033[1;32m'
 C_YELLOW='\033[1;33m'
 C_RED='\033[1;31m'
+C_CYAN='\033[1;36m'
+C_MAGENTA='\033[1;35m'
+C_GRAY='\033[1;90m'
 C_NC='\033[0m'
+C_BOLD='\033[1m'
 
-print_status() {
-    echo -e "${C_BLUE}[INFO]${C_NC} $1"
+# Icons
+ICON_BUILD="🛠️"
+ICON_SETUP="⚙️"
+ICON_OK="✓"
+ICON_FAIL="✗"
+ICON_INFO="ℹ️"
+ICON_DL="📥"
+ICON_ROCKET="🚀"
+ICON_PACKAGE="📦"
+ICON_ANDROID="🤖"
+ICON_SYSTEM="💻"
+
+# Progress tracking
+CURRENT_STEP=0
+TOTAL_STEPS=7
+
+# Helper function for step display
+show_step() {
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    local msg=$1
+    echo -e "\n${C_CYAN}[${CURRENT_STEP}/${TOTAL_STEPS}]${C_NC} ${C_BOLD}${msg}${C_NC}"
+    echo -e "${C_GRAY}────────────────────────────────────────${C_NC}"
 }
 
-print_success() {
-    echo -e "${C_GREEN}[SUCCESS]${C_NC} $1"
-}
+# Helper function for running tasks with a spinner
+run_task() {
+    local msg=$1
+    shift
+    local cmd=("$@")
+    local spinner="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    local i=0
+    
+    # Run in background and log output
+    "${cmd[@]}" &> /tmp/setup_android.log &
+    local pid=$!
 
-print_warning() {
-    echo -e "${C_YELLOW}[WARNING]${C_NC} $1"
-}
+    # Show spinner with message
+    printf "  ${C_GRAY}→${C_NC} %s" "$msg"
+    while kill -0 $pid 2>/dev/null; do
+        printf " ${C_BLUE}%s${C_NC}" "${spinner:i++%10:1}"
+        sleep 0.1
+        printf "\b\b"
+    done
 
-print_error() {
-    echo -e "${C_RED}[ERROR]${C_NC} $1" >&2
-}
-
-detect_system() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS_ID="$ID"
-        OS_VERSION="$VERSION_ID"
-        print_status "Detected system: $PRETTY_NAME"
+    # Check exit code
+    if wait $pid; then
+        printf "\b\b ${C_GREEN}${ICON_OK} Done${C_NC}\n"
+        return 0
     else
-        print_error "Unable to detect operating system"
+        printf "\b\b ${C_RED}${ICON_FAIL} Failed${C_NC}\n"
+        echo -e "${C_YELLOW}--- ERROR LOG ---${C_NC}" >&2
+        tail -n 20 /tmp/setup_android.log >&2
+        echo -e "${C_YELLOW}-----------------${C_NC}" >&2
         exit 1
     fi
 }
 
-install_base_packages() {
-    print_status "Updating package repositories"
-    sudo apt update
-
-    print_status "Upgrading existing packages"
-    sudo apt upgrade -y
-
-    print_status "Installing base development tools"
-    sudo apt install -y \
-        openssh-server screen python3 git default-jdk android-tools-adb bc bison \
-        build-essential curl flex g++-multilib gcc-multilib gnupg gperf imagemagick \
-        lib32ncurses-dev lib32readline-dev lib32z1-dev lz4 libncurses5-dev libsdl1.2-dev \
-        libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools \
-        xsltproc yasm zip zlib1g-dev libtinfo5 libncurses5 unzip tmate ccache
-
-    print_success "Base packages installation completed"
+# Silent task runner (no output shown)
+run_silent() {
+    "$@" &> /tmp/setup_android.log
 }
 
-setup_python2() {
-    if command -v python2 &> /dev/null; then
-        print_status "Python 2 is already available"
-        return 0
-    fi
-
-    print_status "Python 2 not found, installing from source"
-    cd /tmp
+# Get system information
+get_system_info() {
+    # OS Info
+    local os_name=$(lsb_release -d 2>/dev/null | cut -f2 || cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
     
-    if [ ! -f "Python-2.7.18.tgz" ]; then
-        print_status "Downloading Python 2.7.18"
-        wget https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz
-    fi
+    # Kernel
+    local kernel=$(uname -r)
     
-    print_status "Extracting Python 2.7.18"
-    tar xzf Python-2.7.18.tgz
-    cd Python-2.7.18
+    # RAM
+    local ram_total=$(free -h | awk '/^Mem:/ {print $2}')
+    local ram_used=$(free -h | awk '/^Mem:/ {print $3}')
     
-    print_status "Configuring Python 2.7.18 build"
-    ./configure --enable-optimizations
+    # Storage
+    local storage_total=$(df -h / | awk 'NR==2 {print $2}')
+    local storage_used=$(df -h / | awk 'NR==2 {print $3}')
+    local storage_avail=$(df -h / | awk 'NR==2 {print $4}')
     
-    print_status "Building and installing Python 2.7.18"
-    make -j$(nproc)
-    sudo make altinstall
+    # CPU
+    local cpu_model=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
+    local cpu_cores=$(nproc)
     
-    print_status "Creating Python 2 symbolic link"
-    sudo ln -sfn '/usr/local/bin/python2.7' '/usr/bin/python2'
-    
-    cd "$HOME"
-    print_success "Python 2 installation completed"
+    echo -e "\n${C_CYAN}${ICON_SYSTEM} System Information${C_NC}"
+    echo -e "╭──────────────────────────────────────────────────────────────────╮"
+    printf "│ %-64s │\n" "${C_BOLD}Operating System:${C_NC} $os_name"
+    printf "│ %-64s │\n" "${C_BOLD}Kernel:${C_NC} $kernel"
+    printf "│ %-64s │\n" "${C_BOLD}CPU:${C_NC} $cpu_model ($cpu_cores cores)"
+    printf "│ %-64s │\n" "${C_BOLD}RAM:${C_NC} $ram_used / $ram_total"
+    printf "│ %-64s │\n" "${C_BOLD}Storage (/):${C_NC} Used: $storage_used | Available: $storage_avail | Total: $storage_total"
+    echo -e "╰──────────────────────────────────────────────────────────────────╯"
 }
 
-setup_android_tools() {
-    print_status "Setting up Android platform tools"
-    cd "$HOME"
+# Setup byobu alias function
+setup_byobu_function() {
+    local byobu_function='
+# Byobu session manager
+b() {
+    if [ $# -eq 0 ]; then
+        byobu
+    else
+        session_name="$1"
+        byobu has-session -t "$session_name" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            byobu attach-session -t "$session_name"
+        else
+            byobu new-session -s "$session_name"
+        fi
+    fi
+}'
     
+    # Add to .bashrc if not already present
+    if ! grep -q "# Byobu session manager" ~/.bashrc 2>/dev/null; then
+        echo "$byobu_function" >> ~/.bashrc
+    fi
+}
+
+# --- Main Logic ---
+main() {
+    clear
+    
+    # Header
+    echo -e "${C_MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
+    echo -e "${C_BOLD}                   ${ICON_ANDROID} Android Build Environment Setup ${ICON_BUILD}${C_NC}"
+    echo -e "${C_MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
+    echo -e "${C_GRAY}Preparing your system for Android Open Source Project (AOSP) development${C_NC}"
+    echo
+
+    # Request sudo access upfront
+    echo -e "${ICON_INFO} ${C_YELLOW}This script requires administrator privileges${C_NC}"
+    sudo -v
+    # Keep sudo session alive
+    while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done &> /dev/null &
+
+    # Step 1: Update System
+    show_step "${ICON_PACKAGE} Updating System Packages"
+    run_task "Refreshing package lists" sudo apt-get update -y
+    run_task "Upgrading existing packages" sudo apt-get upgrade -y
+
+    # Step 2: Install Base Utilities
+    show_step "${ICON_SETUP} Installing Essential Tools"
+    local base_packages="unzip git ccache zip curl wget byobu"
+    run_task "Installing build utilities" sudo apt-get install -y $base_packages
+
+    # Step 3: Android Platform Tools
+    show_step "${ICON_DL} Downloading Android Platform Tools"
+    cd ~/
     if [ ! -f "platform-tools-latest-linux.zip" ]; then
-        print_status "Downloading Android platform tools"
-        wget https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+        run_task "Fetching platform-tools" wget -q https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+    else
+        echo -e "  ${C_GRAY}→${C_NC} Platform tools already downloaded ${C_GREEN}${ICON_OK} Skipped${C_NC}"
     fi
-    
-    if [ ! -d "platform-tools" ]; then
-        print_status "Extracting platform tools"
-        unzip -q platform-tools-latest-linux.zip
-    fi
-    
-    print_status "Configuring PATH for platform tools"
-    local android_path_block='
-# Android SDK platform tools
+    run_task "Extracting platform-tools" unzip -qo platform-tools-latest-linux.zip -d ~
+
+    # Step 4: Configure PATH
+    show_step "${ICON_SETUP} Configuring Environment Variables"
+    printf "  ${C_GRAY}→${C_NC} Setting up PATH in .profile"
+    local android_path_block='# add Android SDK platform tools to path
 if [ -d "$HOME/platform-tools" ] ; then
     PATH="$HOME/platform-tools:$PATH"
 fi'
-    
     if ! grep -q 'PATH="$HOME/platform-tools:$PATH"' ~/.profile; then
-        echo "$android_path_block" >> ~/.profile
-        print_success "Added platform tools to PATH in .profile"
+        echo -e "\n$android_path_block" >> ~/.profile
+        printf " ${C_GREEN}${ICON_OK} Added${C_NC}\n"
     else
-        print_status "Platform tools already configured in PATH"
+        printf " ${C_GREEN}${ICON_OK} Already configured${C_NC}\n"
     fi
-    
-    print_success "Android platform tools setup completed"
-}
 
-setup_repo_tool() {
-    print_status "Setting up repo tool"
+    # Step 5: Install Repo Tool
+    show_step "${ICON_DL} Setting up Google Repo Tool"
     mkdir -p ~/bin
-    
-    if [ ! -f ~/bin/repo ]; then
-        print_status "Downloading repo tool"
-        curl -o ~/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
-        chmod a+x ~/bin/repo
-        print_success "Repo tool installed"
-    else
-        print_status "Repo tool already installed"
-    fi
-    
-    local bin_path_block='
-# User bin directory
-if [ -d "$HOME/bin" ] ; then
-    PATH="$HOME/bin:$PATH"
-fi'
-    
-    if ! grep -q 'PATH="$HOME/bin:$PATH"' ~/.profile; then
-        echo "$bin_path_block" >> ~/.profile
-        print_success "Added ~/bin to PATH in .profile"
-    else
-        print_status "~/bin already configured in PATH"
-    fi
-}
+    run_task "Downloading repo tool" curl -s -o ~/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
+    chmod a+x ~/bin/repo
+    echo -e "  ${C_GRAY}→${C_NC} Repo tool installed to ~/bin/repo ${C_GREEN}${ICON_OK} Done${C_NC}"
 
-setup_build_environment() {
-    print_status "Setting up AOSP build environment"
-    cd "$HOME"
-    
+    # Step 6: AOSP Build Dependencies
+    show_step "${ICON_BUILD} Installing AOSP Build Dependencies"
+    cd ~/
     if [ ! -d "scripts" ]; then
-        print_status "Cloning build environment scripts"
-        git clone https://github.com/akhilnarang/scripts.git
+        run_task "Cloning build environment scripts" git clone -q https://github.com/akhilnarang/scripts
     else
-        print_status "Build environment scripts already present"
-        cd scripts
-        print_status "Updating build environment scripts"
-        git pull
-        cd "$HOME"
+        echo -e "  ${C_GRAY}→${C_NC} Build scripts already present ${C_GREEN}${ICON_OK} Skipped${C_NC}"
     fi
     
-    print_status "Running Android build environment setup"
     cd scripts
-    bash setup/android_build_env.sh
-    cd "$HOME"
+    echo -e "  ${C_GRAY}→${C_NC} Running AOSP environment setup (this may take a while)..."
+    if bash setup/android_build_env.sh &> /tmp/aosp_env_setup.log; then
+        echo -e "  ${C_GRAY}→${C_NC} AOSP dependencies installed ${C_GREEN}${ICON_OK} Done${C_NC}"
+    else
+        echo -e "  ${C_GRAY}→${C_NC} AOSP dependencies installation ${C_RED}${ICON_FAIL} Failed${C_NC}"
+        echo -e "${C_YELLOW}Check /tmp/aosp_env_setup.log for details${C_NC}"
+    fi
+
+    # Step 7: Configure Byobu
+    show_step "${ICON_SETUP} Configuring Byobu Session Manager"
+    setup_byobu_function
+    echo -e "  ${C_GRAY}→${C_NC} Byobu helper function configured ${C_GREEN}${ICON_OK} Done${C_NC}"
+
+    # Display system information
+    get_system_info
+
+    # Final Summary
+    echo -e "\n${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
+    echo -e "${C_BOLD}               ${ICON_ROCKET} Setup Complete! Your system is ready ${ICON_OK}${C_NC}"
+    echo -e "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
     
-    print_success "AOSP build environment setup completed"
+    echo -e "\n${C_CYAN}${ICON_INFO} Quick Start Guide:${C_NC}"
+    echo -e "╭──────────────────────────────────────────────────────────────────────╮"
+    echo -e "│                                                                      │"
+    echo -e "│  ${C_BOLD}1. Reload your environment:${C_NC}                                        │"
+    echo -e "│     ${C_BLUE}source ~/.profile && source ~/.bashrc${C_NC}                          │"
+    echo -e "│                                                                      │"
+    echo -e "│  ${C_BOLD}2. Use Byobu for persistent sessions:${C_NC}                              │"
+    echo -e "│     ${C_BLUE}b${C_NC} ${C_GRAY}<session-name>${C_NC}  - Create or attach to a session             │"
+    echo -e "│     ${C_BLUE}b${C_NC}                - List/manage sessions                         │"
+    echo -e "│                                                                      │"
+    echo -e "│  ${C_BOLD}Example:${C_NC}                                                            │"
+    echo -e "│     ${C_BLUE}b android${C_NC}        - Create/attach to 'android' session          │"
+    echo -e "│     ${C_BLUE}b lineage${C_NC}        - Create/attach to 'lineage' session          │"
+    echo -e "│                                                                      │"
+    echo -e "│  ${C_BOLD}3. Verify installation:${C_NC}                                            │"
+    echo -e "│     ${C_BLUE}adb --version${C_NC}    - Check Android Debug Bridge                  │"
+    echo -e "│     ${C_BLUE}repo --version${C_NC}   - Check repo tool                             │"
+    echo -e "│                                                                      │"
+    echo -e "╰──────────────────────────────────────────────────────────────────────╯"
+    
+    echo -e "\n${C_GRAY}Log files saved to /tmp/ for troubleshooting${C_NC}"
+    echo -e "${C_MAGENTA}Happy Building! ${ICON_ANDROID}${C_NC}\n"
 }
 
-main() {
-    echo -e "${C_BLUE}Android Build Environment Setup${C_NC}"
-    echo "========================================"
-    
-    print_status "Requesting sudo access for package installation"
-    sudo -v
-    
-    while true; do 
-        sudo -n true
-        sleep 60
-        kill -0 "$$" || exit
-    done 2>/dev/null &
-    
-    detect_system
-    
-    print_status "Phase 1: Installing system packages"
-    install_base_packages
-    
-    print_status "Phase 2: Setting up Python 2"
-    setup_python2
-    
-    print_status "Phase 3: Installing Android tools"
-    setup_android_tools
-    
-    print_status "Phase 4: Setting up repo tool"
-    setup_repo_tool
-    
-    print_status "Phase 5: Configuring build environment"
-    setup_build_environment
-    
-    echo
-    echo "========================================"
-    print_success "Android build environment setup completed successfully"
-    echo
-    print_warning "To activate PATH changes, either:"
-    echo "  1. Open a new terminal session"
-    echo "  2. Run: source ~/.profile"
-    echo
-    print_status "Your system is now ready for Android ROM development"
-}
-
-main "$@"
+# Run it
+main
