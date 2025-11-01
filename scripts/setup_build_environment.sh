@@ -1,233 +1,378 @@
 #!/usr/bin/env bash
 
-set -eo pipefail
+# ⚠️ This script is intended for Ubuntu 22.04 LTS. It may not function as expected on other systems.
 
-# Colors
-C_BLUE='\033[1;34m'
-C_GREEN='\033[1;32m'
-C_YELLOW='\033[1;33m'
-C_RED='\033[1;31m'
-C_CYAN='\033[1;36m'
-C_MAGENTA='\033[1;35m'
-C_GRAY='\033[1;90m'
-C_NC='\033[0m'
-C_BOLD='\033[1m'
+set -euo pipefail
+IFS=$'\n\t'
+
+# Terminal Colors
+readonly C_BLUE='\033[1;34m'
+readonly C_GREEN='\033[1;32m'
+readonly C_YELLOW='\033[1;33m'
+readonly C_RED='\033[1;31m'
+readonly C_CYAN='\033[1;36m'
+readonly C_MAGENTA='\033[1;35m'
+readonly C_GRAY='\033[1;90m'
+readonly C_WHITE='\033[1;37m'
+readonly C_NC='\033[0m'
+readonly C_BOLD='\033[1m'
+readonly C_DIM='\033[2m'
 
 # Icons
-ICON_BUILD="🛠️"
-ICON_SETUP="⚙️"
-ICON_OK="✓"
-ICON_FAIL="✗"
-ICON_INFO="ℹ️"
-ICON_DL="📥"
-ICON_ROCKET="🚀"
-ICON_PACKAGE="📦"
-ICON_ANDROID="🤖"
-ICON_SYSTEM="💻"
+readonly ICON_BUILD="🛠️"
+readonly ICON_SETUP="⚙️"
+readonly ICON_OK="✓"
+readonly ICON_FAIL="✗"
+readonly ICON_INFO="◆"
+readonly ICON_DL="↓"
+readonly ICON_ROCKET="→"
+readonly ICON_PACKAGE="◈"
+readonly ICON_ANDROID="◉"
+readonly ICON_SYSTEM="◎"
+readonly ICON_WARN="!"
+readonly ICON_PROGRESS="◌"
+readonly ICON_ARROW="▸"
+
+# Script Configuration
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly LOG_DIR="/var/log/android-setup"
+readonly LOG_FILE="${LOG_DIR}/setup_$(date +%Y%m%d_%H%M%S).log"
+readonly PLATFORM_TOOLS_DIR="/opt/android-platform-tools"
+readonly BUILD_SCRIPTS_DIR="/opt/android-build-scripts"
 
 CURRENT_STEP=0
-TOTAL_STEPS=7
+TOTAL_STEPS=8
 
+# Setup logging directory and redirect output to log file
+setup_logging() {
+    mkdir -p "$LOG_DIR"
+    exec 1> >(tee -a "$LOG_FILE")
+    exec 2>&1
+}
+
+# Display the main header with Android branding
+print_header() {
+    clear
+    echo
+    echo -e "${C_CYAN}╔══════════════════════════════════════════════════════════╗${C_NC}"
+    echo -e "${C_CYAN}║${C_NC}                                                          ${C_CYAN}║${C_NC}"
+    echo -e "${C_CYAN}║${C_NC}     ${C_WHITE}${ICON_ANDROID}  ${C_BOLD}ANDROID BUILD ENVIRONMENT SETUP${C_NC}  ${ICON_BUILD}         ${C_CYAN}║${C_NC}"
+    echo -e "${C_CYAN}║${C_NC}                                                          ${C_CYAN}║${C_NC}"
+    echo -e "${C_CYAN}║${C_NC}        ${C_DIM}Automated setup for AOSP development${C_NC}            ${C_CYAN}║${C_NC}"
+    echo -e "${C_CYAN}║${C_NC}           ${C_DIM}Ubuntu 22.04 LTS Optimized${C_NC}                   ${C_CYAN}║${C_NC}"
+    echo -e "${C_CYAN}║${C_NC}                                                          ${C_CYAN}║${C_NC}"
+    echo -e "${C_CYAN}╚══════════════════════════════════════════════════════════╝${C_NC}"
+    echo
+}
+
+# Verify Ubuntu version compatibility
+check_ubuntu_version() {
+    if ! command -v lsb_release &>/dev/null; then
+        apt-get update -qq && apt-get install -qq -y lsb-release
+    fi
+    
+    local version=$(lsb_release -rs 2>/dev/null || echo "0")
+    local os_name=$(lsb_release -ds 2>/dev/null || echo "Unknown")
+    
+    echo -e "${C_WHITE}┌─ ${ICON_SYSTEM} System Check${C_NC}"
+    echo -e "${C_WHITE}│${C_NC}"
+    
+    if [[ "$version" != "22.04" ]]; then
+        echo -e "${C_WHITE}│${C_NC}  ${C_YELLOW}${ICON_WARN} Warning: Optimized for Ubuntu 22.04 LTS${C_NC}"
+        echo -e "${C_WHITE}│${C_NC}  ${C_YELLOW}Current: ${os_name}${C_NC}"
+        echo -e "${C_WHITE}│${C_NC}"
+        echo -e -n "${C_WHITE}└${C_NC}  Continue anyway? (y/N): "
+        read -n 1 -r
+        echo
+        [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+    else
+        echo -e "${C_WHITE}│${C_NC}  ${C_GREEN}${ICON_OK}${C_NC} ${os_name}"
+        echo -e "${C_WHITE}└${C_NC}  ${C_GREEN}Compatible system detected${C_NC}"
+    fi
+    echo
+}
+
+# Display current step progress with enhanced UI
 show_step() {
     CURRENT_STEP=$((CURRENT_STEP + 1))
     local msg=$1
-    echo -e "\n${C_CYAN}[${CURRENT_STEP}/${TOTAL_STEPS}]${C_NC} ${C_BOLD}${msg}${C_NC}"
-    echo -e "${C_GRAY}────────────────────────────────────────${C_NC}"
+    echo
+    echo -e "${C_BLUE}╭──────────────────────────────────────────────────────────╮${C_NC}"
+    echo -e "${C_BLUE}│${C_NC} ${C_BOLD}${C_WHITE}[${CURRENT_STEP}/${TOTAL_STEPS}] ${msg}${C_NC}"
+    echo -e "${C_BLUE}╰──────────────────────────────────────────────────────────╯${C_NC}"
 }
 
+# Execute a task with progress spinner and status
 run_task() {
     local msg=$1
     shift
     local cmd=("$@")
-    local spinner="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    local temp_log=$(mktemp)
+    local spinner=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
     local i=0
     
-    "${cmd[@]}" &> /tmp/setup_android.log &
+    printf "  ${C_WHITE}${ICON_ARROW}${C_NC} %-45s" "$msg"
+    
+    "${cmd[@]}" &> "$temp_log" &
     local pid=$!
-
-    printf "  ${C_GRAY}→${C_NC} %s" "$msg"
+    
     while kill -0 $pid 2>/dev/null; do
-        printf " ${C_BLUE}%s${C_NC}" "${spinner:i++%10:1}"
+        printf "${C_CYAN}%s${C_NC}" "${spinner[$((i++ % 10))]}"
         sleep 0.1
-        printf "\b\b"
+        printf "\b"
     done
-
+    
     if wait $pid; then
-        printf "\b\b ${C_GREEN}${ICON_OK} Done${C_NC}\n"
+        printf "\b[${C_GREEN}${ICON_OK}${C_NC}]\n"
+        rm -f "$temp_log"
         return 0
     else
-        printf "\b\b ${C_RED}${ICON_FAIL} Failed${C_NC}\n"
-        echo -e "${C_YELLOW}--- ERROR LOG ---${C_NC}" >&2
-        tail -n 20 /tmp/setup_android.log >&2
-        echo -e "${C_YELLOW}-----------------${C_NC}" >&2
+        printf "\b[${C_RED}${ICON_FAIL}${C_NC}]\n"
+        echo
+        echo -e "${C_RED}┌─ Error Output ────────────────────────┐${C_NC}" >&2
+        tail -n 10 "$temp_log" | sed 's/^/│ /' >&2
+        echo -e "${C_RED}└───────────────────────────────────────┘${C_NC}" >&2
+        rm -f "$temp_log"
         exit 1
     fi
 }
 
+# Collect and display system information with enhanced formatting
 get_system_info() {
-    local os_name=$(lsb_release -d 2>/dev/null | cut -f2 || cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
+    local os_name=$(lsb_release -ds 2>/dev/null || echo "Unknown")
     local kernel=$(uname -r)
     local ram_total=$(free -h | awk '/^Mem:/ {print $2}')
-    local ram_used=$(free -h | awk '/^Mem:/ {print $3}')
-    local storage_total=$(df -h / | awk 'NR==2 {print $2}')
-    local storage_used=$(df -h / | awk 'NR==2 {print $3}')
+    local ram_avail=$(free -h | awk '/^Mem:/ {print $7}')
+    local storage_info=$(df -h / | awk 'NR==2 {printf "%s/%s", $3, $2}')
     local storage_avail=$(df -h / | awk 'NR==2 {print $4}')
-    local cpu_model=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
+    local cpu_model=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs | head -c 35)
     local cpu_cores=$(nproc)
     
-    echo -e "\n${C_CYAN}${ICON_SYSTEM} System Information${C_NC}"
-    echo -e "╭──────────────────────────────────────────────────────────────────╮"
-    printf "│ %-64s │\n" "${C_BOLD}Operating System:${C_NC} $os_name"
-    printf "│ %-64s │\n" "${C_BOLD}Kernel:${C_NC} $kernel"
-    printf "│ %-64s │\n" "${C_BOLD}CPU:${C_NC} $cpu_model ($cpu_cores cores)"
-    printf "│ %-64s │\n" "${C_BOLD}RAM:${C_NC} $ram_used / $ram_total"
-    printf "│ %-64s │\n" "${C_BOLD}Storage (/):${C_NC} Used: $storage_used | Available: $storage_avail | Total: $storage_total"
-    echo -e "╰──────────────────────────────────────────────────────────────────╯"
-}
-
-setup_byobu_function() {
-    local byobu_function='
-# Byobu session manager
-b() {
-    if [ $# -eq 0 ]; then
-        byobu
-    else
-        session_name="$1"
-        byobu has-session -t "$session_name" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            byobu attach-session -t "$session_name"
-        else
-            byobu new-session -s "$session_name"
-        fi
-    fi
-}'
-    
-    if ! grep -q "# Byobu session manager" /etc/bash.bashrc 2>/dev/null; then
-        echo "$byobu_function" >> /etc/bash.bashrc
-    fi
-}
-
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${C_RED}${ICON_FAIL} This script must be run as root${C_NC}"
-        echo -e "${C_YELLOW}Usage: sudo $0${C_NC}"
-        exit 1
-    fi
-}
-
-main() {
-    clear
-    check_root
-    
-    echo -e "${C_MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
-    echo -e "${C_BOLD}                   ${ICON_ANDROID} Android Build Environment Setup ${ICON_BUILD}${C_NC}"
-    echo -e "${C_MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
-    echo -e "${C_GRAY}Preparing your system for Android Open Source Project (AOSP) development${C_NC}"
     echo
+    echo -e "${C_MAGENTA}╭─ ${ICON_SYSTEM} System Information ────────────────────────╮${C_NC}"
+    echo -e "${C_MAGENTA}│${C_NC}                                                   ${C_MAGENTA}│${C_NC}"
+    echo -e "${C_MAGENTA}│${C_NC}  ${C_WHITE}OS:${C_NC}       ${os_name}"
+    echo -e "${C_MAGENTA}│${C_NC}  ${C_WHITE}Kernel:${C_NC}   ${kernel}"
+    echo -e "${C_MAGENTA}│${C_NC}  ${C_WHITE}CPU:${C_NC}      ${cpu_model}... (${cpu_cores} cores)"
+    echo -e "${C_MAGENTA}│${C_NC}  ${C_WHITE}RAM:${C_NC}      ${ram_avail} available of ${ram_total}"
+    echo -e "${C_MAGENTA}│${C_NC}  ${C_WHITE}Storage:${C_NC}  ${storage_info} (${storage_avail} free)"
+    echo -e "${C_MAGENTA}│${C_NC}                                                   ${C_MAGENTA}│${C_NC}"
+    echo -e "${C_MAGENTA}╰───────────────────────────────────────────────────╯${C_NC}"
+}
 
-    # Step 1: Update System
-    show_step "${ICON_PACKAGE} Updating System Packages"
-    run_task "Refreshing package lists" apt-get update -y
-    run_task "Upgrading existing packages" apt-get upgrade -y
-
-    # Step 2: Install Base Utilities
-    show_step "${ICON_SETUP} Installing Essential Tools"
-    local base_packages="unzip git ccache zip curl wget byobu"
-    run_task "Installing build utilities" apt-get install -y $base_packages
-
-    # Step 3: Android Platform Tools
-    show_step "${ICON_DL} Installing Android Platform Tools"
-    local platform_tools_dir="/opt/android-platform-tools"
-    mkdir -p "$platform_tools_dir"
-    cd /tmp
-    if [ ! -f "platform-tools-latest-linux.zip" ]; then
-        run_task "Fetching platform-tools" wget -q https://dl.google.com/android/repository/platform-tools-latest-linux.zip
-    else
-        echo -e "  ${C_GRAY}→${C_NC} Platform tools already downloaded ${C_GREEN}${ICON_OK} Skipped${C_NC}"
-    fi
-    run_task "Extracting platform-tools" unzip -qo platform-tools-latest-linux.zip -d /opt/android-platform-tools
-    
-    # Create symlinks in /usr/local/bin
-    printf "  ${C_GRAY}→${C_NC} Creating system-wide symlinks"
-    for tool in adb fastboot; do
-        ln -sf "$platform_tools_dir/platform-tools/$tool" "/usr/local/bin/$tool"
-    done
-    printf " ${C_GREEN}${ICON_OK} Done${C_NC}\n"
-
-    # Step 4: Configure PATH
-    show_step "${ICON_SETUP} Configuring System-wide Environment"
-    printf "  ${C_GRAY}→${C_NC} Setting up PATH in /etc/profile.d/"
-    cat > /etc/profile.d/android.sh << 'EOF'
+# Configure Byobu session manager and environment
+setup_environment_and_byobu() {
+    cat > /etc/profile.d/android-env.sh << 'EOF'
 # Android development environment
 export PATH="/opt/android-platform-tools/platform-tools:$PATH"
 export PATH="/usr/local/bin:$PATH"
 export USE_CCACHE=1
 export CCACHE_COMPRESS=1
 export CCACHE_MAXSIZE=50G
-EOF
-    chmod +x /etc/profile.d/android.sh
-    printf " ${C_GREEN}${ICON_OK} Done${C_NC}\n"
+export ANDROID_HOME="/opt/android-platform-tools"
 
-    # Step 5: Install Repo Tool
-    show_step "${ICON_DL} Setting up Google Repo Tool"
-    run_task "Downloading repo tool" curl -s -o /usr/local/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
-    chmod a+x /usr/local/bin/repo
-    echo -e "  ${C_GRAY}→${C_NC} Repo tool installed to /usr/local/bin/repo ${C_GREEN}${ICON_OK} Done${C_NC}"
-
-    # Step 6: AOSP Build Dependencies
-    show_step "${ICON_BUILD} Installing AOSP Build Dependencies"
-    cd /opt
-    if [ ! -d "android-build-scripts" ]; then
-        run_task "Cloning build environment scripts" git clone -q https://github.com/akhilnarang/scripts android-build-scripts
+# Byobu session manager helper
+b() {
+    if [ $# -eq 0 ]; then
+        # List existing sessions
+        if byobu list-sessions 2>/dev/null; then
+            echo "Use 'b <session-name>' to attach/create a session"
+        else
+            echo "No active sessions. Use 'b <session-name>' to create one"
+        fi
     else
-        echo -e "  ${C_GRAY}→${C_NC} Build scripts already present ${C_GREEN}${ICON_OK} Skipped${C_NC}"
+        local session_name="$1"
+        if byobu has-session -t "$session_name" 2>/dev/null; then
+            byobu attach-session -t "$session_name"
+        else
+            byobu new-session -s "$session_name"
+        fi
+    fi
+}
+
+# Set byobu prompt to show session name
+if [ -n "$BYOBU_BACKEND" ]; then
+    export PS1="[byobu:$BYOBU_WINDOW_NAME] $PS1"
+fi
+EOF
+    chmod 644 /etc/profile.d/android-env.sh
+    
+    # Configure byobu to show session name in status line
+    mkdir -p /usr/share/byobu/status
+    cat > /usr/share/byobu/status/status << 'EOF'
+# Show session name in byobu status
+tmux_left="#S"
+EOF
+}
+
+# Verify script is running with root privileges
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${C_RED}╭──────────────────────────────────────────────────╮${C_NC}"
+        echo -e "${C_RED}│${C_NC}  ${C_RED}${ICON_FAIL} Error: Root privileges required${C_NC}            ${C_RED}│${C_NC}"
+        echo -e "${C_RED}│${C_NC}  ${C_YELLOW}Usage: sudo $0${C_NC}                             ${C_RED}│${C_NC}"
+        echo -e "${C_RED}╰──────────────────────────────────────────────────╯${C_NC}"
+        exit 1
+    fi
+}
+
+# Check internet connectivity
+verify_network() {
+    echo -e "${C_WHITE}${ICON_INFO} Checking network connectivity...${C_NC}"
+    if ! ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
+        echo -e "${C_RED}${ICON_FAIL} No internet connection detected${C_NC}"
+        exit 1
+    fi
+    echo -e "${C_GREEN}${ICON_OK} Network connection verified${C_NC}"
+    echo
+}
+
+# Handle cleanup on script exit
+cleanup_on_exit() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        echo
+        echo -e "${C_RED}╭──────────────────────────────────────────────────╮${C_NC}"
+        echo -e "${C_RED}│${C_NC}  ${C_RED}${ICON_FAIL} Setup failed!${C_NC}                              ${C_RED}│${C_NC}"
+        echo -e "${C_RED}│${C_NC}  ${C_DIM}Log file: $LOG_FILE${C_NC}"
+        echo -e "${C_RED}╰──────────────────────────────────────────────────╯${C_NC}"
+    fi
+}
+
+trap cleanup_on_exit EXIT
+
+# Main execution flow
+main() {
+    setup_logging
+    print_header
+    check_root
+    check_ubuntu_version
+    verify_network
+    
+    # Step 1: Initial System Update
+    show_step "${ICON_PACKAGE} Initial System Update"
+    export DEBIAN_FRONTEND=noninteractive
+    run_task "Updating package lists" apt-get update -qq
+    run_task "Upgrading system packages" apt-get upgrade -qq -y
+    run_task "Fixing broken dependencies" apt-get install -qq -f -y
+
+    # Step 2: Install Essential Development Tools
+    show_step "${ICON_SETUP} Installing Development Tools"
+    local essential_packages=(
+        build-essential curl wget git nano tmux byobu
+        unzip zip ccache software-properties-common
+        lsb-release gnupg2 ca-certificates python3
+        python3-pip cmake ninja-build pkg-config
+    )
+    run_task "Installing essential packages" apt-get install -qq -y "${essential_packages[@]}"
+
+    # Step 3: Install GitHub CLI
+    show_step "${ICON_DL} Installing GitHub CLI"
+    if ! command -v gh &>/dev/null; then
+        run_task "Adding GitHub CLI repository" bash -c "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg"
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        run_task "Updating package lists" apt-get update -qq
+        run_task "Installing GitHub CLI" apt-get install -qq -y gh
+    else
+        echo -e "  ${C_WHITE}${ICON_ARROW}${C_NC} GitHub CLI already installed         [${C_GREEN}${ICON_OK}${C_NC}]"
+    fi
+
+    # Step 4: Android Platform Tools
+    show_step "${ICON_ANDROID} Installing Android Platform Tools"
+    mkdir -p "$PLATFORM_TOOLS_DIR"
+    local platform_tools_url="https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
+    local platform_tools_zip="/tmp/platform-tools.zip"
+    
+    if [[ ! -d "$PLATFORM_TOOLS_DIR/platform-tools" ]]; then
+        run_task "Downloading platform-tools" wget -q -O "$platform_tools_zip" "$platform_tools_url"
+        run_task "Extracting platform-tools" unzip -qo "$platform_tools_zip" -d "$PLATFORM_TOOLS_DIR"
+        rm -f "$platform_tools_zip"
+    else
+        echo -e "  ${C_WHITE}${ICON_ARROW}${C_NC} Platform tools already installed     [${C_GREEN}${ICON_OK}${C_NC}]"
     fi
     
-    cd android-build-scripts
-    echo -e "  ${C_GRAY}→${C_NC} Running AOSP environment setup (this may take a while)..."
-    if bash setup/android_build_env.sh &> /tmp/aosp_env_setup.log; then
-        echo -e "  ${C_GRAY}→${C_NC} AOSP dependencies installed ${C_GREEN}${ICON_OK} Done${C_NC}"
+    printf "  ${C_WHITE}${ICON_ARROW}${C_NC} %-45s" "Creating system symlinks"
+    for tool in adb fastboot; do
+        ln -sf "$PLATFORM_TOOLS_DIR/platform-tools/$tool" "/usr/local/bin/$tool" 2>/dev/null || true
+    done
+    printf "[${C_GREEN}${ICON_OK}${C_NC}]\n"
+
+    # Step 5: Configure Environment and Byobu
+    show_step "${ICON_SETUP} Configuring Environment"
+    setup_environment_and_byobu
+    echo -e "  ${C_WHITE}${ICON_ARROW}${C_NC} Environment variables configured     [${C_GREEN}${ICON_OK}${C_NC}]"
+    echo -e "  ${C_WHITE}${ICON_ARROW}${C_NC} Byobu session manager configured     [${C_GREEN}${ICON_OK}${C_NC}]"
+
+    # Step 6: Install Repo Tool
+    show_step "${ICON_DL} Installing Google Repo Tool"
+    local repo_url="https://storage.googleapis.com/git-repo-downloads/repo"
+    run_task "Downloading repo tool" curl -fsSL -o /usr/local/bin/repo "$repo_url"
+    chmod a+rx /usr/local/bin/repo
+    echo -e "  ${C_WHITE}${ICON_ARROW}${C_NC} Repo tool installed successfully     [${C_GREEN}${ICON_OK}${C_NC}]"
+
+    # Step 7: AOSP Build Dependencies
+    show_step "${ICON_BUILD} Installing AOSP Dependencies"
+    if [[ ! -d "$BUILD_SCRIPTS_DIR" ]]; then
+        run_task "Cloning AOSP build scripts" \
+            git clone -q --depth=1 https://github.com/akhilnarang/scripts "$BUILD_SCRIPTS_DIR"
     else
-        echo -e "  ${C_GRAY}→${C_NC} AOSP dependencies installation ${C_RED}${ICON_FAIL} Failed${C_NC}"
-        echo -e "${C_YELLOW}Check /tmp/aosp_env_setup.log for details${C_NC}"
+        echo -e "  ${C_WHITE}${ICON_ARROW}${C_NC} Build scripts already present        [${C_GREEN}${ICON_OK}${C_NC}]"
+    fi
+    
+    printf "  ${C_WHITE}${ICON_ARROW}${C_NC} %-45s" "Setting up AOSP environment"
+    if bash "$BUILD_SCRIPTS_DIR/setup/android_build_env.sh" &>/dev/null; then
+        printf "[${C_GREEN}${ICON_OK}${C_NC}]\n"
+    else
+        printf "[${C_YELLOW}${ICON_WARN}${C_NC}]\n"
+        echo -e "  ${C_YELLOW}Note: Some optional dependencies may have failed${C_NC}"
     fi
 
-    # Step 7: Configure Byobu
-    show_step "${ICON_SETUP} Configuring Byobu Session Manager"
-    setup_byobu_function
-    echo -e "  ${C_GRAY}→${C_NC} Byobu helper function configured system-wide ${C_GREEN}${ICON_OK} Done${C_NC}"
+    # Step 8: Final System Update
+    show_step "${ICON_PACKAGE} Final System Update"
+    run_task "Updating package lists" apt-get update -qq
+    run_task "Upgrading new packages" apt-get upgrade -qq -y
+    run_task "Cleaning package cache" apt-get autoclean -qq -y
+    run_task "Removing unused packages" apt-get autoremove -qq -y
 
+    # Display system information
     get_system_info
 
-    echo -e "\n${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
-    echo -e "${C_BOLD}               ${ICON_ROCKET} Setup Complete! Your system is ready ${ICON_OK}${C_NC}"
-    echo -e "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_NC}"
+    # Success message with enhanced UI
+    echo
+    echo -e "${C_GREEN}╔══════════════════════════════════════════════════════════╗${C_NC}"
+    echo -e "${C_GREEN}║${C_NC}                                                          ${C_GREEN}║${C_NC}"
+    echo -e "${C_GREEN}║${C_NC}       ${C_BOLD}${ICON_OK}  SETUP COMPLETED SUCCESSFULLY!  ${ICON_OK}${C_NC}          ${C_GREEN}║${C_NC}"
+    echo -e "${C_GREEN}║${C_NC}                                                          ${C_GREEN}║${C_NC}"
+    echo -e "${C_GREEN}╚══════════════════════════════════════════════════════════╝${C_NC}"
     
-    echo -e "\n${C_CYAN}${ICON_INFO} Quick Start Guide:${C_NC}"
-    echo -e "╭──────────────────────────────────────────────────────────────────────╮"
-    echo -e "│                                                                      │"
-    echo -e "│  ${C_BOLD}1. Reload your environment:${C_NC}                                        │"
-    echo -e "│     ${C_BLUE}source /etc/profile.d/android.sh${C_NC}                              │"
-    echo -e "│     ${C_GRAY}Or logout and login again${C_NC}                                      │"
-    echo -e "│                                                                      │"
-    echo -e "│  ${C_BOLD}2. Use Byobu for persistent sessions:${C_NC}                              │"
-    echo -e "│     ${C_BLUE}b${C_NC} ${C_GRAY}<session-name>${C_NC}  - Create or attach to a session             │"
-    echo -e "│     ${C_BLUE}b${C_NC}                - List/manage sessions                         │"
-    echo -e "│                                                                      │"
-    echo -e "│  ${C_BOLD}3. Verify installation:${C_NC}                                            │"
-    echo -e "│     ${C_BLUE}adb --version${C_NC}    - Check Android Debug Bridge                  │"
-    echo -e "│     ${C_BLUE}repo --version${C_NC}   - Check repo tool                             │"
-    echo -e "│     ${C_BLUE}which adb${C_NC}        - Should show /usr/local/bin/adb              │"
-    echo -e "│                                                                      │"
-    echo -e "│  ${C_BOLD}Installation Locations:${C_NC}                                            │"
-    echo -e "│     Platform Tools: ${C_GRAY}/opt/android-platform-tools${C_NC}                  │"
-    echo -e "│     Repo Tool:      ${C_GRAY}/usr/local/bin/repo${C_NC}                          │"
-    echo -e "│     Build Scripts:  ${C_GRAY}/opt/android-build-scripts${C_NC}                   │"
-    echo -e "│                                                                      │"
-    echo -e "╰──────────────────────────────────────────────────────────────────────╯"
+    echo
+    echo -e "${C_CYAN}╭─ Quick Reference Guide ──────────────────────────────────╮${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}                                                          ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}  ${C_BOLD}${ICON_ROCKET} Reload Environment:${C_NC}                               ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}source /etc/profile.d/android-env.sh${C_NC}               ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}                                                          ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}  ${C_BOLD}${ICON_INFO} Verify Installation:${C_NC}                              ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}adb --version${C_NC}    ${C_DIM}# Android Debug Bridge${C_NC}          ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}repo --version${C_NC}   ${C_DIM}# Repo tool${C_NC}                      ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}gh --version${C_NC}     ${C_DIM}# GitHub CLI${C_NC}                     ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}                                                          ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}  ${C_BOLD}${ICON_SETUP} Byobu Session Manager:${C_NC}                           ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}b${C_NC}               ${C_DIM}# List active sessions${C_NC}             ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}b <name>${C_NC}        ${C_DIM}# Create/attach to session${C_NC}         ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}F2${C_NC}              ${C_DIM}# New window (in byobu)${C_NC}            ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}F3/F4${C_NC}           ${C_DIM}# Navigate windows${C_NC}                 ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     ${C_WHITE}F6${C_NC}              ${C_DIM}# Detach from session${C_NC}              ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}                                                          ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}  ${C_BOLD}${ICON_PACKAGE} Installed Locations:${C_NC}                             ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     Platform Tools: ${C_DIM}/opt/android-platform-tools${C_NC}       ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     Repo Tool:      ${C_DIM}/usr/local/bin/repo${C_NC}               ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}     Setup Logs:     ${C_DIM}${LOG_DIR}${C_NC}                           ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}│${C_NC}                                                          ${C_CYAN}│${C_NC}"
+    echo -e "${C_CYAN}╰──────────────────────────────────────────────────────────╯${C_NC}"
     
-    echo -e "\n${C_GRAY}Log files saved to /tmp/ for troubleshooting${C_NC}"
-    echo -e "${C_MAGENTA}Happy Building! ${ICON_ANDROID}${C_NC}\n"
+    echo
+    echo -e "${C_MAGENTA}${C_BOLD}Happy Building! ${ICON_ANDROID}${C_NC}"
+    echo
 }
 
 main "$@"
