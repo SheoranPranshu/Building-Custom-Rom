@@ -1,49 +1,44 @@
-# Environment Setup Guide
+
+# Android ROM Build Environment Setup
+
+Automated setup scripts for building custom Android ROMs on Ubuntu 22.04 LTS.
 
 ## Repository Setup
-
-Clone the configuration repository and navigate to the build scripts directory:
 
 ```bash
 git clone https://github.com/sheoranpranshu/Building-Custom-Rom.git build-scripts
 cd build-scripts
 ```
 
-## Environment Installation
+### Environment Installation
 
-The setup script is to install all required development tools, libraries, and Android platform components Ubuntu 22.04 LTS
+Install all required development tools, libraries, and Android platform components:
 
 ```bash
 sudo ./scripts/setup_build_environment.sh
 ```
 
-## ZRAM Configuration
+### ZRAM Configuration
 
-ZRAM creates compressed swap space in memory, significantly improving build performance through reduced disk operations and faster compilation times.
+Optimize build performance with compressed RAM-based swap:
 
-### Standard Setup
-
-Deploy ZRAM with optimized defaults (69% RAM allocation, ZSTD compression):
-
+#### Standard Setup (69% zram, zstd, priority 100)
 ```bash
 sudo ./scripts/setup_zram.sh
 ```
 
-### Custom Configuration
-
-Configure specific parameters for specialized requirements:
-
+#### Custom Configuration
 ```bash
 sudo ./scripts/setup_zram.sh -p <percentage> -a <algorithm> -r <priority>
 ```
 
-Available algorithms include lzo, lz4, and zstd. Percentage values range from 10-100% of available memory.
-
-### Recommendation
-
-For maximum performance in high-resource environments:
-
+#### Example
 ```bash
 sudo ./scripts/setup_zram.sh -p 100 -a zstd -r 100
 ```
 
+## Credits & Acknowledgements
+
+Special thanks to:
+- [LineageOS](https://github.com/lineageos)
+- [Akhil Narang](https://github.com/akhilnarang)
