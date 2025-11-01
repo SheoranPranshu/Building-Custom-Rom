@@ -1,255 +1,422 @@
 #!/usr/bin/env bash
-
-#
 # Usage: sudo ./setup_zram.sh [-p percent] [-a algo] [-r priority] [-h]
-#
 
 set -eo pipefail
 
-ZRAM_PERCENT=69
-ZRAM_ALGO=zstd
-ZRAM_PRIORITY=100
+# Default configuration values
+readonly DEFAULT_ZRAM_PERCENT=69
+readonly DEFAULT_ZRAM_ALGO="zstd"
+readonly DEFAULT_ZRAM_PRIORITY=100
 
-C_CYAN="\033[96m"
-C_GREEN="\033[92m"
-C_YELLOW="\033[93m"
-C_RED="\033[91m"
-C_BLUE="\033[94m"
-C_PURPLE="\033[95m"
-C_ORANGE="\033[38;5;208m"
-C_BOLD="\033[1m"
-C_DIM="\033[2m"
-C_NC="\033[0m"
+ZRAM_PERCENT="${DEFAULT_ZRAM_PERCENT}"
+ZRAM_ALGO="${DEFAULT_ZRAM_ALGO}"
+ZRAM_PRIORITY="${DEFAULT_ZRAM_PRIORITY}"
 
-usage(){
-    echo -e "${C_BOLD}Usage:${C_NC} sudo $0 [options]"
-    echo -e "${C_YELLOW}  -p${C_NC} PERCENT  ${C_DIM}ZRAM size percentage (default: ${ZRAM_PERCENT})${C_NC}"
-    echo -e "${C_YELLOW}  -a${C_NC} ALGO     ${C_DIM}Compression algorithm (default: ${ZRAM_ALGO})${C_NC}"
-    echo -e "${C_YELLOW}  -r${C_NC} PRIORITY ${C_DIM}Swap priority (default: ${ZRAM_PRIORITY})${C_NC}"
-    echo -e "${C_YELLOW}  -h${C_NC}          ${C_DIM}Display help${C_NC}"
-}
-
-while getopts "p:a:r:h" opt; do
-    case $opt in
-        p) ZRAM_PERCENT=$OPTARG ;;
-        a) ZRAM_ALGO=$OPTARG   ;;
-        r) ZRAM_PRIORITY=$OPTARG ;;
-        h) usage; exit 0 ;;
-        *) usage; exit 1 ;;
-    esac
-done
-
-if [[ $EUID -ne 0 ]]; then
-    echo -e "${C_RED}[ERROR]${C_NC} Root privileges required. Run with sudo."
-    exit 1
+# Color definitions - using tput for better terminal compatibility
+if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
+    C_BOLD=$(tput bold)
+    C_DIM=$(tput dim)
+    C_NC=$(tput sgr0)
+    C_RED=$(tput setaf 1)
+    C_GREEN=$(tput setaf 2)
+    C_YELLOW=$(tput setaf 3)
+    C_BLUE=$(tput setaf 4)
+    C_PURPLE=$(tput setaf 5)
+    C_CYAN=$(tput setaf 6)
+    C_ORANGE=$(tput setaf 208 2>/dev/null || tput setaf 3)
+else
+    C_BOLD="" C_DIM="" C_NC=""
+    C_RED="" C_GREEN="" C_YELLOW=""
+    C_BLUE="" C_PURPLE="" C_CYAN="" C_ORANGE=""
 fi
 
-SERVICE_CANDIDATES=(zramswap zram zram-swap zram-config)
+# Service detection array
+readonly SERVICE_CANDIDATES=("zramswap" "zram" "zram-swap" "zram-config")
 SERVICE_NAME=""
 
+# Package manager variables
+PKG_INSTALL=""
+PKG_UPDATE=""
+DISTRO=""
+
+# Display usage information
+usage() {
+    cat <<EOF
+${C_BOLD}Usage:${C_NC} sudo $0 [options]
+
+${C_BOLD}Options:${C_NC}
+  ${C_YELLOW}-p${C_NC} PERCENT  ZRAM size percentage (default: ${DEFAULT_ZRAM_PERCENT})
+  ${C_YELLOW}-a${C_NC} ALGO     Compression algorithm (default: ${DEFAULT_ZRAM_ALGO})
+  ${C_YELLOW}-r${C_NC} PRIORITY Swap priority (default: ${DEFAULT_ZRAM_PRIORITY})
+  ${C_YELLOW}-h${C_NC}          Display this help message
+
+${C_BOLD}Examples:${C_NC}
+  sudo $0                    # Use defaults
+  sudo $0 -p 50 -a lz4       # 50% RAM with lz4 compression
+  sudo $0 -r 200             # Set priority to 200
+
+EOF
+}
+
+# Parse command line arguments
+parse_arguments() {
+    while getopts "p:a:r:h" opt; do
+        case "${opt}" in
+            p)
+                if [[ "${OPTARG}" =~ ^[0-9]+$ ]] && [ "${OPTARG}" -gt 0 ] && [ "${OPTARG}" -le 100 ]; then
+                    ZRAM_PERCENT="${OPTARG}"
+                else
+                    print_error "Invalid percentage: ${OPTARG} (must be 1-100)"
+                    exit 1
+                fi
+                ;;
+            a) ZRAM_ALGO="${OPTARG}" ;;
+            r)
+                if [[ "${OPTARG}" =~ ^[0-9]+$ ]]; then
+                    ZRAM_PRIORITY="${OPTARG}"
+                else
+                    print_error "Invalid priority: ${OPTARG} (must be numeric)"
+                    exit 1
+                fi
+                ;;
+            h) usage; exit 0 ;;
+            *) usage; exit 1 ;;
+        esac
+    done
+}
+
+# Check for root privileges
+check_root() {
+    if [ "${EUID}" -ne 0 ]; then
+        print_error "Root privileges required. Please run with sudo."
+        exit 1
+    fi
+}
+
+# Detect Linux distribution and set package manager
 detect_system() {
-    if command -v apt-get &>/dev/null; then
+    # Try to detect via os-release first (most reliable)
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        local id="${ID,,}"  # Convert to lowercase
+        local id_like="${ID_LIKE,,}"
+    fi
+
+    # Set package manager based on distro
+    if command -v apt-get >/dev/null 2>&1; then
         PKG_INSTALL="apt-get install -y"
         PKG_UPDATE="apt-get update"
         DISTRO="debian"
-    elif command -v dnf &>/dev/null; then
+    elif command -v dnf >/dev/null 2>&1; then
         PKG_INSTALL="dnf install -y"
         PKG_UPDATE="dnf check-update || true"
         DISTRO="fedora"
-    elif command -v pacman &>/dev/null; then
+    elif command -v yum >/dev/null 2>&1; then
+        PKG_INSTALL="yum install -y"
+        PKG_UPDATE="yum check-update || true"
+        DISTRO="rhel"
+    elif command -v zypper >/dev/null 2>&1; then
+        PKG_INSTALL="zypper install -y"
+        PKG_UPDATE="zypper refresh"
+        DISTRO="opensuse"
+    elif command -v pacman >/dev/null 2>&1; then
         PKG_INSTALL="pacman -S --noconfirm"
         PKG_UPDATE="pacman -Sy"
         DISTRO="arch"
+    elif command -v apk >/dev/null 2>&1; then
+        PKG_INSTALL="apk add"
+        PKG_UPDATE="apk update"
+        DISTRO="alpine"
     else
-        echo -e "${C_RED}[ERROR]${C_NC} Unsupported distribution"
+        print_error "Unsupported distribution or package manager not found"
         exit 1
     fi
 }
 
-print_status() { echo -e "${C_BLUE}[INFO]${C_NC} $1"; }
-print_success() { echo -e "${C_GREEN}[SUCCESS]${C_NC} $1"; }
-print_warning() { echo -e "${C_YELLOW}[WARNING]${C_NC} $1"; }
-print_error() { echo -e "${C_RED}[ERROR]${C_NC} $1" >&2; }
+# Print functions with consistent formatting
+print_status() {
+    printf "%s[INFO]%s %s\n" "${C_BLUE}" "${C_NC}" "$1"
+}
 
+print_success() {
+    printf "%s[✓]%s %s\n" "${C_GREEN}" "${C_NC}" "$1"
+}
+
+print_warning() {
+    printf "%s[!]%s %s\n" "${C_YELLOW}" "${C_NC}" "$1"
+}
+
+print_error() {
+    printf "%s[✗]%s %s\n" "${C_RED}" "${C_NC}" "$1" >&2
+}
+
+# Display header with better visual appeal
 print_header() {
-    echo -e "${C_CYAN}========================================${C_NC}"
-    echo -e "${C_CYAN} ZRAM Configuration System${C_NC}"
-    echo -e "${C_CYAN}========================================${C_NC}"
+    local width=50
+    printf "\n%s" "${C_CYAN}"
+    printf "%${width}s\n" | tr ' ' '='
+    printf "%*s\n" $(((width + 26) / 2)) "ZRAM Configuration System"
+    printf "%${width}s\n" | tr ' ' '='
+    printf "%s\n" "${C_NC}"
 }
 
+# Show system information
 show_system_info() {
-    local human_total=$(free -h | awk '/^Mem:/ {print $2}')
-    local kernel=$(uname -r)
-    local distro=$(lsb_release -ds 2>/dev/null || grep PRETTY_NAME /etc/os-release | cut -d'"' -f2 | head -1)
+    local human_total kernel distro_name
+    
+    human_total=$(free -h 2>/dev/null | awk '/^Mem:/ {print $2}')
+    kernel=$(uname -r)
+    
+    # Get distribution name
+    if [ -f /etc/os-release ]; then
+        distro_name=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d'"' -f2)
+    else
+        distro_name="Unknown Linux"
+    fi
 
-    print_status "System: ${distro}"
-    print_status "Kernel: ${kernel}"
-    print_status "Total RAM: ${human_total}"
-    [[ -n "${SERVICE_NAME}" ]] && print_status "Detected service: ${SERVICE_NAME}.service"
-    print_status "Configuration: ${ZRAM_PERCENT}% RAM, ${ZRAM_ALGO} compression, priority ${ZRAM_PRIORITY}"
+    printf "\n%sSystem Information:%s\n" "${C_BOLD}" "${C_NC}"
+    printf "  %-15s : %s\n" "Distribution" "${distro_name}"
+    printf "  %-15s : %s\n" "Kernel" "${kernel}"
+    printf "  %-15s : %s\n" "Total RAM" "${human_total}"
+    
+    [ -n "${SERVICE_NAME}" ] && printf "  %-15s : %s\n" "Service" "${SERVICE_NAME}.service"
+    
+    printf "\n%sConfiguration:%s\n" "${C_BOLD}" "${C_NC}"
+    printf "  %-15s : %s%%\n" "ZRAM Size" "${ZRAM_PERCENT}"
+    printf "  %-15s : %s\n" "Algorithm" "${ZRAM_ALGO}"
+    printf "  %-15s : %s\n" "Priority" "${ZRAM_PRIORITY}"
 }
 
+# Display current memory status
 show_current_memory() {
-    local total=$(free -h | awk '/^Mem:/ {print $2}')
-    local used=$(free -h | awk '/^Mem:/ {print $3}')
-    local avail=$(free -h | awk '/^Mem:/ {print $7}')
+    local total used avail
     
-    echo -e "${C_BOLD}Current Memory Status:${C_NC}"
-    echo -e "  Physical Memory: ${C_GREEN}${total}${C_NC} (${used} used, ${avail} available)"
+    total=$(free -h 2>/dev/null | awk '/^Mem:/ {print $2}')
+    used=$(free -h 2>/dev/null | awk '/^Mem:/ {print $3}')
+    avail=$(free -h 2>/dev/null | awk '/^Mem:/ {print $7}')
+    
+    printf "\n%sCurrent Memory Status:%s\n" "${C_BOLD}" "${C_NC}"
+    printf "  Physical RAM : %s%s%s (Used: %s, Available: %s)\n" \
+           "${C_GREEN}" "${total}" "${C_NC}" "${used}" "${avail}"
 
-    local swaps=$(swapon --show --noheadings 2>/dev/null || true)
-    if [[ -n "$swaps" ]]; then
-        echo -e "  Existing Swap Configuration:"
-        echo -e "${C_DIM}${swaps}${C_NC}"
+    local swaps
+    swaps=$(swapon --show --noheadings 2>/dev/null || true)
+    
+    if [ -n "${swaps}" ]; then
+        printf "  Current Swap :\n"
+        printf "%s%s%s\n" "${C_DIM}" "${swaps}" "${C_NC}" | sed 's/^/    /'
     else
-        echo -e "  Existing Swap: None configured"
+        printf "  Current Swap : None configured\n"
     fi
 }
 
-run_task(){
-    local msg=$1; shift
-    printf "${C_BLUE}[TASK]${C_NC} %-50s " "$msg"
-
-    if "$@" &>/dev/null; then
-        printf "${C_GREEN}[OK]${C_NC}\n"
+# Execute task with status indicator
+run_task() {
+    local msg="$1"
+    shift
+    
+    printf "  %-45s " "${msg}..."
+    
+    if "$@" >/dev/null 2>&1; then
+        printf "%s[✓]%s\n" "${C_GREEN}" "${C_NC}"
+        return 0
     else
-        printf "${C_RED}[FAILED]${C_NC}\n"
-        print_error "Task failed: $msg"
-        exit 1
+        printf "%s[✗]%s\n" "${C_RED}" "${C_NC}"
+        print_error "Task failed: ${msg}"
+        return 1
     fi
 }
 
+# Detect existing ZRAM service
 detect_service() {
-    for c in "${SERVICE_CANDIDATES[@]}"; do
-        if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${c}.service"; then
-            SERVICE_NAME="$c"
-            return 0
-        fi
-    done
+    local candidate
     
-    for c in "${SERVICE_CANDIDATES[@]}"; do
-        if service "${c}" status &>/dev/null; then
-            SERVICE_NAME="$c"
-            return 0
-        fi
-    done
+    # Check systemd services
+    if command -v systemctl >/dev/null 2>&1; then
+        for candidate in "${SERVICE_CANDIDATES[@]}"; do
+            if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${candidate}.service"; then
+                SERVICE_NAME="${candidate}"
+                return 0
+            fi
+        done
+    fi
+    
+    # Check SysV/OpenRC services
+    if command -v service >/dev/null 2>&1; then
+        for candidate in "${SERVICE_CANDIDATES[@]}"; do
+            if service "${candidate}" status >/dev/null 2>&1; then
+                SERVICE_NAME="${candidate}"
+                return 0
+            fi
+        done
+    fi
     
     return 1
 }
 
+# Manage service actions (start/stop/enable/disable)
 service_action() {
-    local action=$1
+    local action="$1"
     
-    if [[ -z "${SERVICE_NAME}" ]] && ! detect_service; then
+    if [ -z "${SERVICE_NAME}" ] && ! detect_service; then
         print_warning "No ZRAM service found to ${action}"
         return 1
     fi
     
-    if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}.service"; then
+    # Use systemctl if available
+    if command -v systemctl >/dev/null 2>&1 && \
+       systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}.service"; then
         run_task "${action^} ${SERVICE_NAME}.service" systemctl "${action}" "${SERVICE_NAME}.service"
-    else
+    # Fall back to service command
+    elif command -v service >/dev/null 2>&1; then
         run_task "${action^} ${SERVICE_NAME}" service "${SERVICE_NAME}" "${action}"
+    else
+        print_warning "Could not ${action} service - no service manager found"
+        return 1
     fi
 }
 
+# Configure kernel parameters for optimal ZRAM performance
 configure_kernel_params() {
     local sysctl_conf="/etc/sysctl.d/99-zram.conf"
     
-    cat > "$sysctl_conf" <<EOF
+    cat > "${sysctl_conf}" <<EOF
+# ZRAM optimized kernel parameters
 vm.swappiness = 180
 vm.watermark_boost_factor = 0
 vm.watermark_scale_factor = 125
 vm.page-cluster = 0
 EOF
     
-    sysctl -p "$sysctl_conf" &>/dev/null
+    sysctl -p "${sysctl_conf}" >/dev/null 2>&1
 }
 
-main() {
-    clear
-    print_header
-
-    detect_system
-    show_system_info
-    echo
-    show_current_memory
-    echo
-
-    print_status "Beginning ZRAM installation and configuration"
+# Install distro-specific packages
+install_packages() {
+    run_task "Updating package repositories" ${PKG_UPDATE}
     
-    run_task "Updating package repositories" $PKG_UPDATE
-    run_task "Installing zram-tools package" $PKG_INSTALL zram-tools
-
-    case "$DISTRO" in
-        debian|fedora) 
-            local kernel_pkg
-            [[ "$DISTRO" == "debian" ]] && kernel_pkg="linux-modules-extra-$(uname -r)" || kernel_pkg="kernel-modules-$(uname -r)"
-            $PKG_INSTALL "$kernel_pkg" &>/dev/null || print_warning "Kernel modules installation failed, continuing"
+    # Install main package
+    case "${DISTRO}" in
+        debian|ubuntu)
+            run_task "Installing zram-tools" ${PKG_INSTALL} zram-tools
+            ;;
+        fedora|rhel)
+            run_task "Installing zram package" ${PKG_INSTALL} zram
+            ;;
+        opensuse)
+            run_task "Installing systemd-zram-service" ${PKG_INSTALL} systemd-zram-service
+            ;;
+        arch)
+            run_task "Installing zramswap" ${PKG_INSTALL} zramswap || \
+            run_task "Installing from AUR" yay -S --noconfirm zramd 2>/dev/null || \
+            print_warning "Please install a ZRAM package from AUR manually"
+            ;;
+        *)
+            run_task "Installing zram-tools" ${PKG_INSTALL} zram-tools
             ;;
     esac
+}
 
-    [[ -f /etc/default/zramswap ]] && run_task "Creating backup of existing configuration" cp /etc/default/zramswap{,.backup-$(date +%Y%m%d-%H%M%S)}
-
-    run_task "Writing ZRAM configuration" bash -c "cat > /etc/default/zramswap <<EOF
+# Configure ZRAM settings
+configure_zram() {
+    local config_file="/etc/default/zramswap"
+    
+    # Backup existing configuration
+    if [ -f "${config_file}" ]; then
+        local backup="${config_file}.backup-$(date +%Y%m%d-%H%M%S)"
+        run_task "Backing up existing configuration" cp "${config_file}" "${backup}"
+    fi
+    
+    # Write new configuration
+    run_task "Writing ZRAM configuration" bash -c "cat > ${config_file} <<EOF
+# ZRAM configuration
 ALGO=${ZRAM_ALGO}
 PERCENT=${ZRAM_PERCENT}
 PRIORITY=${ZRAM_PRIORITY}
 EOF"
+}
 
+# Display final summary with comprehensive information
+show_final_summary() {
+    local phys_total phys_used phys_avail
+    
+    print_success "ZRAM configuration completed successfully!"
+    printf "\n"
+    
+    # Get memory stats
+    phys_total=$(free -h 2>/dev/null | awk '/^Mem:/ {print $2}')
+    phys_used=$(free -h 2>/dev/null | awk '/^Mem:/ {print $3}')
+    phys_avail=$(free -h 2>/dev/null | awk '/^Mem:/ {print $7}')
+    
+    printf "%sMemory Configuration:%s\n" "${C_BOLD}" "${C_NC}"
+    printf "  Physical RAM : %s%s%s (Used: %s, Free: %s)\n" \
+           "${C_GREEN}" "${phys_total}" "${C_NC}" "${phys_used}" "${phys_avail}"
+    
+    # Check ZRAM status
+    local zinfo
+    zinfo=$(swapon --show --noheadings 2>/dev/null | grep -m1 zram || true)
+    
+    if [ -n "${zinfo}" ]; then
+        local zdev zsize zprio
+        zdev=$(echo "${zinfo}" | awk '{print $1}')
+        zsize=$(echo "${zinfo}" | awk '{print $2}')
+        zprio=$(echo "${zinfo}" | awk '{print $4}')
+        
+        printf "  ZRAM Swap    : %s%s%s (Device: %s, Priority: %s)\n" \
+               "${C_GREEN}" "${zsize}" "${C_NC}" "${zdev}" "${zprio}"
+        
+        # Show compression stats if available
+        if [ -r /sys/block/zram0/mm_stat ]; then
+            local orig comp ratio
+            read -r orig comp _ < /sys/block/zram0/mm_stat 2>/dev/null || true
+            
+            if [ "${comp:-0}" -gt 0 ] && [ "${orig:-0}" -gt 0 ]; then
+                ratio=$(awk "BEGIN {printf \"%.2f\", ${orig}/${comp}}")
+                printf "  Compression  : %s%s:1%s (%s algorithm)\n" \
+                       "${C_YELLOW}" "${ratio}" "${C_NC}" "${ZRAM_ALGO}"
+            fi
+        fi
+    else
+        print_warning "ZRAM swap not yet active - may require reboot"
+    fi
+    
+    printf "\n%sManagement Commands:%s\n" "${C_BOLD}" "${C_NC}"
+    printf "  View status     : %ssystemctl status %s%s\n" "${C_DIM}" "${SERVICE_NAME:-zramswap}" "${C_NC}"
+    printf "  Show swap       : %sswapon --show%s\n" "${C_DIM}" "${C_NC}"
+    printf "  Memory stats    : %sfree -h%s\n" "${C_DIM}" "${C_NC}"
+    printf "  ZRAM stats      : %szramctl%s\n" "${C_DIM}" "${C_NC}"
+    printf "\n"
+}
+
+# Main execution function
+main() {
+    # Clear screen for clean presentation
+    clear
+    
+    print_header
+    detect_system
+    show_system_info
+    show_current_memory
+    
+    printf "\n%sStarting ZRAM Installation%s\n" "${C_BOLD}" "${C_NC}"
+    printf "%s\n" "$(printf '%50s' | tr ' ' '-')"
+    
+    install_packages
+    configure_zram
     run_task "Configuring kernel parameters" configure_kernel_params
     
+    # Restart and enable service
     service_action restart
     service_action enable
-
-    echo
+    
+    printf "\n"
     show_final_summary
 }
 
-show_final_summary() {
-    print_success "ZRAM configuration completed successfully"
-    echo
+# Signal trap for clean exit
+trap 'printf "\n%s[!]%s Operation interrupted by user\n" "${C_RED}" "${C_NC}"; exit 130' INT TERM
 
-    local phys_total=$(free -h | awk '/^Mem:/ {print $2}')
-    local phys_used=$(free -h | awk '/^Mem:/ {print $3}')
-    local phys_avail=$(free -h | awk '/^Mem:/ {print $7}')
-
-    echo -e "${C_BOLD}System Memory Status:${C_NC}"
-    echo -e "  Physical RAM: ${C_GREEN}${phys_total}${C_NC} (${phys_used} used, ${phys_avail} available)"
-
-    local zinfo=$(swapon --show --noheadings 2>/dev/null | grep -m1 zram || true)
-    if [[ -n "$zinfo" ]]; then
-        local zdev=$(echo "$zinfo" | awk '{print $1}')
-        local zsize=$(echo "$zinfo" | awk '{print $2}')
-        local zprio=$(echo "$zinfo" | awk '{print $4}')
-        echo -e "  ZRAM Swap: ${C_GREEN}${zsize}${C_NC} (${zdev}, priority ${zprio})"
-
-        if [[ -r /sys/block/zram0/mm_stat ]]; then
-            local orig comp
-            read -r orig comp _ < /sys/block/zram0/mm_stat 2>/dev/null || { orig=0; comp=0; }
-            if [[ $comp -gt 0 && $orig -gt 0 ]]; then
-                local ratio=$(awk "BEGIN {printf \"%.2f\", $orig/$comp}")
-                echo -e "  Compression Ratio: ${C_YELLOW}${ratio}:1${C_NC} (${ZRAM_ALGO})"
-            fi
-        fi
-
-        local phys_g=$(free -g | awk '/^Mem:/ {print $2}')
-        local z_g=$(echo "$zsize" | grep -oE '[0-9]+' | head -1)
-        local total_eff=$((phys_g + z_g))
-        echo -e "  Effective Memory: ${C_BOLD}~${total_eff}GB${C_NC} (approximate)"
-    else
-        print_error "ZRAM swap not detected after configuration"
-    fi
-
-    echo
-    echo -e "${C_DIM}========================================${C_NC}"
-    echo -e "${C_BOLD}Management Commands:${C_NC}"
-    echo -e "  Service Status: ${C_GREEN}systemctl status ${SERVICE_NAME:-zramswap}${C_NC}"
-    echo -e "  Swap Status: ${C_GREEN}swapon --show${C_NC}"
-    echo -e "  Memory Statistics: ${C_GREEN}cat /proc/swaps${C_NC}"
-    echo -e "  Kernel Parameters: ${C_GREEN}cat /etc/sysctl.d/99-zram.conf${C_NC}"
-    echo
-}
-
-trap 'echo -e "\n${C_RED}[ERROR]${C_NC} Operation interrupted"; exit 1' INT TERM
-
-main "$@"
+# Script entry point
+parse_arguments "$@"
+check_root
+main
