@@ -31,16 +31,11 @@ usage() {
     cat <<EOF
 ${C_BOLD}Usage:${C_NC} sudo $0 [options]
 
-${C_BOLD}Options:${C_NC}
-  ${C_YELLOW}-p${C_NC} PERCENT   ZRAM size percentage (default: ${DEFAULT_ZRAM_PERCENT})
-  ${C_YELLOW}-a${C_NC} ALGO      Compression algorithm (default: ${DEFAULT_ZRAM_ALGO})
-  ${C_YELLOW}-r${C_NC} PRIORITY  Swap priority (default: ${DEFAULT_ZRAM_PRIORITY})
-  ${C_YELLOW}-h${C_NC}           Help
-
-Examples:
-  sudo $0              # Use defaults
-  sudo $0 -p 50        # 50% of RAM
-  sudo $0 -p 50 -a lz4 # 50% with lz4
+Options:
+  -p PERCENT   ZRAM size percentage (default: ${DEFAULT_ZRAM_PERCENT})
+  -a ALGO      Compression algorithm (default: ${DEFAULT_ZRAM_ALGO})
+  -r PRIORITY  Swap priority (default: ${DEFAULT_ZRAM_PRIORITY})
+  -h           Help
 EOF
 }
 
@@ -51,19 +46,15 @@ parse_arguments() {
                 if [[ "$OPTARG" =~ ^[0-9]+$ ]] && [ "$OPTARG" -ge 1 ] && [ "$OPTARG" -le 100 ]; then
                     ZRAM_PERCENT="$OPTARG"
                 else
-                    echo "${C_RED}[✗]${C_NC} Invalid percentage" >&2
-                    exit 1
-                fi
-                ;;
+                    echo "${C_RED}[✗]${C_NC} Invalid percentage"; exit 1
+                fi ;;
             a) ZRAM_ALGO="$OPTARG" ;;
             r)
                 if [[ "$OPTARG" =~ ^[0-9]+$ ]]; then
                     ZRAM_PRIORITY="$OPTARG"
                 else
-                    echo "${C_RED}[✗]${C_NC} Invalid priority" >&2
-                    exit 1
-                fi
-                ;;
+                    echo "${C_RED}[✗]${C_NC} Invalid priority"; exit 1
+                fi ;;
             h) usage; exit 0 ;;
             *) usage; exit 1 ;;
         esac
@@ -71,10 +62,7 @@ parse_arguments() {
 }
 
 check_root() {
-    if [ "$EUID" -ne 0 ]; then
-        echo "${C_RED}[✗]${C_NC} Must run as root" >&2
-        exit 1
-    fi
+    [ "$EUID" -ne 0 ] && echo "${C_RED}[✗] Must run as root${C_NC}" && exit 1
 }
 
 print_header() {
@@ -84,19 +72,6 @@ print_header() {
     echo "            ZRAM Configuration Setup"
     echo "=================================================="
     echo "${C_NC}"
-}
-
-print_info() {
-    echo "${C_BOLD}System Information:${C_NC}"
-    echo "  Distribution : $(lsb_release -ds 2>/dev/null || uname -s)"
-    echo "  Kernel       : $(uname -r)"
-    echo "  Total RAM    : $(free -h | awk '/^Mem:/ {print $2}')"
-    echo
-    echo "${C_BOLD}Configuration:${C_NC}"
-    echo "  ZRAM Size    : ${ZRAM_PERCENT}%"
-    echo "  Algorithm    : ${ZRAM_ALGO}"
-    echo "  Priority     : ${ZRAM_PRIORITY}"
-    echo
 }
 
 run_task() {
@@ -113,96 +88,35 @@ run_task() {
 
 detect_pm() {
     if command -v apt-get >/dev/null 2>&1; then
-        PM_UPDATE="apt-get update"
+        PM_UPDATE="apt-get update -y"
         PM_INSTALL="apt-get install -y"
         DISTRO=debian
-    elif command -v dnf >/dev/null 2>&1; then
-        PM_UPDATE="dnf check-update || true"
-        PM_INSTALL="dnf install -y"
-        DISTRO=fedora
-    elif command -v yum >/dev/null 2>&1; then
-        PM_UPDATE="yum check-update || true"
-        PM_INSTALL="yum install -y"
-        DISTRO=rhel
-    elif command -v pacman >/dev/null 2>&1; then
-        PM_UPDATE="pacman -Sy"
-        PM_INSTALL="pacman -S --noconfirm"
-        DISTRO=arch
-    elif command -v zypper >/dev/null 2>&1; then
-        PM_UPDATE="zypper refresh"
-        PM_INSTALL="zypper install -y"
-        DISTRO=opensuse
     else
-        echo "${C_RED}[✗]${C_NC} Unsupported distro" >&2
+        echo "${C_RED}[✗] Unsupported distro (this auto-fix requires apt-get)${C_NC}"
         exit 1
     fi
 }
 
-install_zram_pkg() {
-    run_task "Updating package repositories" $PM_UPDATE
-
-    case "$DISTRO" in
-        debian)
-            run_task "Installing zram-tools" $PM_INSTALL zram-tools
-            ;;
-        fedora|rhel)
-            run_task "Installing zram package" $PM_INSTALL zram
-            ;;
-        arch)
-            run_task "Installing zramswap" $PM_INSTALL zramswap || true
-            ;;
-        opensuse)
-            run_task "Installing systemd-zram-service" $PM_INSTALL systemd-zram-service
-            ;;
-    esac
-}
-
-get_zramswap_path() {
-    for path in /usr/sbin/zramswap /usr/bin/zramswap /sbin/zramswap; do
-        [ -x "$path" ] && ZR_BIN="$path" && return 0
-    done
-
-    if command -v zramswap >/dev/null 2>&1; then
-        ZR_BIN="$(command -v zramswap)"
+fix_missing_zram_module() {
+    if modprobe zram >/dev/null 2>&1; then
         return 0
     fi
 
-    return 1
+    echo "${C_YELLOW}[!] Kernel ZRAM module missing — fixing automatically...${C_NC}"
+
+    run_task "Installing linux-modules-extra-$(uname -r)" \
+        $PM_INSTALL "linux-modules-extra-$(uname -r)" || \
+    run_task "Installing full generic kernel" \
+        $PM_INSTALL linux-generic
+
+    echo "${C_YELLOW}Reboot is required to load new kernel modules.${C_NC}"
+    echo "${C_GREEN}After reboot, run this script again.${C_NC}"
+    exit 0
 }
 
-detect_service() {
-    [ ! "$(command -v systemctl)" ] && return 1
-
-    for name in zramswap zram-swap zramd zram systemd-zram-setup@zram0; do
-        if systemctl list-unit-files --type=service 2>/dev/null | awk '{print $1}' | grep -q "^${name}.service"; then
-            SERVICE="$name"
-            return 0
-        fi
-    done
-    return 1
-}
-
-create_service() {
-    echo "  Creating SystemD service file..."
-
-    cat <<EOF >/etc/systemd/system/zramswap.service
-[Unit]
-Description=ZRAM Swap Service
-After=multi-user.target
-
-[Service]
-Type=oneshot
-ExecStart=$ZR_BIN start
-ExecStop=$ZR_BIN stop
-RemainAfterExit=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload >/dev/null 2>&1
-    SERVICE="zramswap"
-    printf "  %-46s ${C_GREEN}[✓]${C_NC}\n" "Created zramswap.service"
+install_zram_pkg() {
+    run_task "Updating package repositories" bash -c "$PM_UPDATE"
+    run_task "Installing zram-tools" $PM_INSTALL zram-tools
 }
 
 configure_zram() {
@@ -219,7 +133,6 @@ EOF
 
 apply_kernel_tuning() {
     cat <<EOF >/etc/sysctl.d/99-zram.conf
-# ZRAM optimizations
 vm.swappiness=180
 vm.watermark_boost_factor=0
 vm.watermark_scale_factor=125
@@ -228,66 +141,62 @@ EOF
     sysctl -p /etc/sysctl.d/99-zram.conf >/dev/null 2>&1 || true
 }
 
+ensure_service() {
+    if systemctl list-unit-files --type=service | grep -q "^zramswap.service"; then
+        SERVICE=zramswap
+        return
+    fi
+
+    cat <<EOF >/etc/systemd/system/zramswap.service
+[Unit]
+Description=ZRAM Swap Service
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/zramswap start
+ExecStop=/usr/sbin/zramswap stop
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    SERVICE=zramswap
+}
+
+start_service_or_manual() {
+    if systemctl list-unit-files --type=service | grep -q "^${SERVICE}.service"; then
+        run_task "Restarting zramswap.service" systemctl restart zramswap.service
+        run_task "Enabling zramswap at boot" systemctl enable zramswap.service
+    else
+        echo "${C_YELLOW}[!] No systemd found — falling back to manual start${C_NC}"
+        /usr/sbin/zramswap start || echo "${C_RED}[✗] Manual start failed${C_NC}"
+    fi
+}
+
 show_final_status() {
     echo
     echo "${C_GREEN}${C_BOLD}[✓] ZRAM configuration complete!${C_NC}"
     echo
-    echo "${C_BOLD}Current Swap Status:${C_NC}"
-    if swapon --show 2>/dev/null | grep -qi zram; then
-        swapon --show | grep -i zram | sed 's/^/  /'
-    else
-        echo "  ${C_YELLOW}No ZRAM swap active yet (may need reboot)${C_NC}"
-    fi
-
+    echo "${C_BOLD}Swap Status:${C_NC}"
+    swapon --show | sed 's/^/  /' || echo "  (none)"
     echo
     echo "${C_BOLD}ZRAM Devices:${C_NC}"
-    if command -v zramctl >/dev/null 2>&1; then
-        zramctl 2>/dev/null | sed 's/^/  /' || echo "  ${C_YELLOW}No devices visible yet${C_NC}"
-    fi
-
-    echo
-    echo "${C_BOLD}Management Commands:${C_NC}"
-    echo "  View status  : ${C_DIM}systemctl status ${SERVICE:-zramswap}${C_NC}"
-    echo "  Show swap    : ${C_DIM}swapon --show${C_NC}"
-    echo "  Memory stats : ${C_DIM}free -h${C_NC}"
-    echo "  ZRAM stats   : ${C_DIM}zramctl${C_NC}"
+    zramctl 2>/dev/null | sed 's/^/  /' || echo "  (none)"
     echo
 }
 
 main() {
     print_header
-    print_info
-
-    echo "${C_BOLD}Starting Installation${C_NC}"
-    echo "--------------------------------------------------"
-
     detect_pm
+    fix_missing_zram_module
     install_zram_pkg
-
-    if ! get_zramswap_path; then
-        echo "${C_RED}[✗]${C_NC} zramswap binary not found after installation" >&2
-        exit 1
-    fi
-
-    run_task "Writing ZRAM configuration" configure_zram
-    run_task "Applying kernel parameters" apply_kernel_tuning
-
-    # Create service if missing
-    if ! detect_service; then
-        create_service
-        detect_service
-    fi
-
-    # Restart service if it exists, otherwise manual start
-    if [ -n "$SERVICE" ] && systemctl list-unit-files --type=service | awk '{print $1}' | grep -q "^${SERVICE}.service"; then
-        run_task "Restarting $SERVICE service" systemctl restart "$SERVICE"
-        run_task "Enabling $SERVICE at boot" systemctl enable "$SERVICE"
-    else
-        echo "  ${C_YELLOW}No valid ZRAM service found, starting manually...${C_NC}"
-        $ZR_BIN stop 2>/dev/null || true
-        run_task "Starting ZRAM swap" $ZR_BIN start
-    fi
-
+    run_task "Applying ZRAM configuration" configure_zram
+    run_task "Applying kernel tuning" apply_kernel_tuning
+    ensure_service
+    start_service_or_manual
     show_final_status
 }
 
