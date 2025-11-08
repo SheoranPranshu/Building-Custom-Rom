@@ -37,7 +37,7 @@ ${C_BOLD}Options:${C_NC}
   ${C_YELLOW}-r${C_NC} PRIORITY  Swap priority (default: ${DEFAULT_ZRAM_PRIORITY})
   ${C_YELLOW}-h${C_NC}           Help
 
-${C_BOLD}Examples:${C_NC}
+Examples:
   sudo $0              # Use defaults
   sudo $0 -p 50        # 50% of RAM
   sudo $0 -p 50 -a lz4 # 50% with lz4
@@ -158,30 +158,23 @@ install_zram_pkg() {
 }
 
 get_zramswap_path() {
-    # Check common locations for Ubuntu/Debian
     for path in /usr/sbin/zramswap /usr/bin/zramswap /sbin/zramswap; do
-        if [ -x "$path" ]; then
-            ZR_BIN="$path"
-            return 0
-        fi
+        [ -x "$path" ] && ZR_BIN="$path" && return 0
     done
-    
-    # Try command -v as fallback
+
     if command -v zramswap >/dev/null 2>&1; then
         ZR_BIN="$(command -v zramswap)"
         return 0
     fi
-    
+
     return 1
 }
 
 detect_service() {
-    if ! command -v systemctl >/dev/null 2>&1; then
-        return 1
-    fi
-    
+    [ ! "$(command -v systemctl)" ] && return 1
+
     for name in zramswap zram-swap zramd zram systemd-zram-setup@zram0; do
-        if systemctl list-unit-files 2>/dev/null | grep -q "^${name}.service"; then
+        if systemctl list-unit-files --type=service 2>/dev/null | awk '{print $1}' | grep -q "^${name}.service"; then
             SERVICE="$name"
             return 0
         fi
@@ -190,12 +183,8 @@ detect_service() {
 }
 
 create_service() {
-    if [ -z "$ZR_BIN" ]; then
-        return 1
-    fi
-    
-    echo "  Creating systemd service file..."
-    
+    echo "  Creating SystemD service file..."
+
     cat <<EOF >/etc/systemd/system/zramswap.service
 [Unit]
 Description=ZRAM Swap Service
@@ -236,7 +225,6 @@ vm.watermark_boost_factor=0
 vm.watermark_scale_factor=125
 vm.page-cluster=0
 EOF
-
     sysctl -p /etc/sysctl.d/99-zram.conf >/dev/null 2>&1 || true
 }
 
@@ -245,18 +233,18 @@ show_final_status() {
     echo "${C_GREEN}${C_BOLD}[✓] ZRAM configuration complete!${C_NC}"
     echo
     echo "${C_BOLD}Current Swap Status:${C_NC}"
-    if swapon --show 2>/dev/null | grep -q zram; then
-        swapon --show | grep zram | sed 's/^/  /'
+    if swapon --show 2>/dev/null | grep -qi zram; then
+        swapon --show | grep -i zram | sed 's/^/  /'
     else
         echo "  ${C_YELLOW}No ZRAM swap active yet (may need reboot)${C_NC}"
     fi
-    
+
     echo
     echo "${C_BOLD}ZRAM Devices:${C_NC}"
     if command -v zramctl >/dev/null 2>&1; then
         zramctl 2>/dev/null | sed 's/^/  /' || echo "  ${C_YELLOW}No devices visible yet${C_NC}"
     fi
-    
+
     echo
     echo "${C_BOLD}Management Commands:${C_NC}"
     echo "  View status  : ${C_DIM}systemctl status ${SERVICE:-zramswap}${C_NC}"
@@ -269,32 +257,33 @@ show_final_status() {
 main() {
     print_header
     print_info
-    
+
     echo "${C_BOLD}Starting Installation${C_NC}"
     echo "--------------------------------------------------"
-    
+
     detect_pm
     install_zram_pkg
 
     if ! get_zramswap_path; then
-        echo "${C_RED}[✗]${C_NC} zramswap binary not found" >&2
+        echo "${C_RED}[✗]${C_NC} zramswap binary not found after installation" >&2
         exit 1
     fi
 
     run_task "Writing ZRAM configuration" configure_zram
     run_task "Applying kernel parameters" apply_kernel_tuning
 
-    # Handle missing service file
-    if ! detect_service && [ "$DISTRO" = "debian" ]; then
+    # Create service if missing
+    if ! detect_service; then
         create_service
+        detect_service
     fi
-    
-    if [ -n "$SERVICE" ]; then
+
+    # Restart service if it exists, otherwise manual start
+    if [ -n "$SERVICE" ] && systemctl list-unit-files --type=service | awk '{print $1}' | grep -q "^${SERVICE}.service"; then
         run_task "Restarting $SERVICE service" systemctl restart "$SERVICE"
         run_task "Enabling $SERVICE at boot" systemctl enable "$SERVICE"
     else
-        # Manual fallback
-        echo "  ${C_YELLOW}Starting ZRAM manually...${C_NC}"
+        echo "  ${C_YELLOW}No valid ZRAM service found, starting manually...${C_NC}"
         $ZR_BIN stop 2>/dev/null || true
         run_task "Starting ZRAM swap" $ZR_BIN start
     fi
