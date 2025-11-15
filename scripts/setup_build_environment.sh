@@ -232,17 +232,6 @@ check_root() {
     fi
 }
 
-# Network check
-verify_network() {
-    echo -e "${C_WHITE}${ICON_INFO} Checking network connectivity...${C_NC}"
-    if ! ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
-        echo -e "${C_RED}${ICON_FAIL} No internet connection detected.${C_NC}"
-        exit 1
-    fi
-    echo -e "${C_GREEN}${ICON_OK} Network connection verified.${C_NC}"
-    echo
-}
-
 # Cleanup
 cleanup_on_exit() {
     local exit_code=$?
@@ -263,7 +252,6 @@ main() {
     print_header
     check_root
     check_ubuntu_version
-    verify_network
 
     # Step 1
     show_step "${ICON_PACKAGE} Initial System Update"
@@ -330,7 +318,7 @@ main() {
 
     bash "$BUILD_SCRIPTS_DIR/setup/android_build_env.sh" &>/dev/null || echo -e "  ${C_YELLOW}${ICON_WARN} Some optional dependencies failed.${C_NC}"
 
-    # Step 8 (New)
+    # Step 8
     show_step "${ICON_WARN} Optional Repo Safety Lock"
     setup_repo_safety_lock
 
